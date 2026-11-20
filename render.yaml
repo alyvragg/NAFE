@@ -4,7 +4,6 @@ services:
     runtime: node
     plan: free
     rootDir: render-backend
-    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start
     healthCheckPath: /api/health
     envVars:
@@ -23,7 +22,6 @@ services:
   - type: web
     name: nafe-web
     runtime: static
-    buildCommand: npm ci && npm run build
     staticPublishPath: out
     envVars:
       - key: NEXT_PUBLIC_SUPABASE_URL
