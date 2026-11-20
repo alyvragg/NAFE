@@ -155,10 +155,10 @@ export function HomeHeader({
         )}
       </AnimatePresence>
 
-      {/* Saludo Principal Único en Newsreader (text-2xl, máx 24px) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-0.5">
-        <div className="flex items-center gap-2">
-          <h1 className="font-serif text-2xl font-medium leading-tight tracking-[-0.015em] text-[#13150C]/80">
+      {/* Saludo Principal Centrado en Newsreader + Selector de Modo debajo */}
+      <div className="flex flex-col items-center gap-2.5 pt-1 text-center">
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <h1 className="font-serif text-2xl font-medium leading-tight tracking-[-0.015em] text-[#13150C]/85">
             Hola, <span className="italic">{firstName}</span>
           </h1>
           {isVerified && (
@@ -170,7 +170,7 @@ export function HomeHeader({
 
         {canAccessSellerPanel && (
           <div
-            className="inline-flex items-center gap-1 rounded-lg bg-[#EFEFEA] p-1"
+            className="grid w-full max-w-[260px] grid-cols-2 items-center gap-1 rounded-lg bg-[#EFEFEA] p-1"
             role="tablist"
             aria-label="Modo de vista"
           >

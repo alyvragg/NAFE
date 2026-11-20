@@ -223,7 +223,7 @@ export default function OsmRadarMap({
     : false;
 
   return (
-    <div className="relative h-[calc(100dvh-300px)] min-h-[420px] w-full overflow-hidden rounded-xl bg-[#EFEFEA] shadow-[0_2px_10px_rgba(19,21,12,0.04)] sm:h-[540px]">
+    <div className="relative isolate z-0 h-[calc(100dvh-300px)] min-h-[420px] w-full overflow-hidden rounded-xl bg-[#EFEFEA] shadow-[0_2px_10px_rgba(19,21,12,0.04)] sm:h-[540px]">
       <div ref={mapContainerRef} className="z-0 h-full w-full" />
 
       {/* Controles flotantes */}
@@ -374,9 +374,11 @@ export default function OsmRadarMap({
               </h3>
               <button
                 type="button"
-                onClick={() =>
-                  onOpenSellerProfile(activeCardProducer.producerName)
-                }
+                onClick={() => {
+                  const targetName = activeCardProducer.producerName;
+                  setActiveCardProducer(null);
+                  onOpenSellerProfile(targetName);
+                }}
                 className="mt-0.5 inline-block text-xs font-medium text-[#2B4628] hover:underline"
               >
                 {activeCardProducer.producerName}
@@ -393,14 +395,22 @@ export default function OsmRadarMap({
             <div className="flex items-center gap-2 pt-0.5">
               <button
                 type="button"
-                onClick={() => onSelectProducer(activeCardProducer)}
+                onClick={() => {
+                  const target = activeCardProducer;
+                  setActiveCardProducer(null);
+                  onSelectProducer(target);
+                }}
                 className="flex h-9 flex-1 items-center justify-center rounded-lg bg-[#EFEFEA] px-3 text-sm font-medium text-[#13150C] transition-colors hover:bg-[#F7F7F4]"
               >
                 Ver detalle
               </button>
               <button
                 type="button"
-                onClick={() => onOpenChatWithBusiness(activeCardProducer)}
+                onClick={() => {
+                  const target = activeCardProducer;
+                  setActiveCardProducer(null);
+                  onOpenChatWithBusiness(target);
+                }}
                 className="flex h-9 flex-1 items-center justify-center rounded-lg bg-[#2B4628] px-3 text-sm font-medium text-[#F7F7F4] transition-colors hover:bg-[#223820]"
               >
                 Enviar mensaje

@@ -68,7 +68,9 @@ export function BuyerRadarView({
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] =
     useState<ProducerCategory>("Todo");
-  const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  const [viewMode, setViewMode] = useState<"map" | "list">(
+    onlySaved ? "list" : "map"
+  );
   const [sortBy, setSortBy] = useState<"distance" | "rating">("distance");
 
   const filteredProducers = useMemo(() => {
@@ -108,8 +110,41 @@ export function BuyerRadarView({
   }, [producers, onlySaved, savedIds, activeCategory, searchQuery, sortBy]);
 
   return (
-    <div className="space-y-3.5 pb-6">
-      {/* 1. Buscador Directo y Limpio */}
+    <div className="space-y-3 pb-6">
+      {/* 1. Selector Principal Prominente: Mapa (prioritario) y Lista */}
+      <div
+        className="mx-auto grid w-full max-w-[360px] grid-cols-2 gap-1.5 rounded-xl bg-[#EFEFEA] p-1"
+        role="group"
+        aria-label="Modo de exploración"
+      >
+        <button
+          type="button"
+          onClick={() => setViewMode("map")}
+          className={[
+            "flex h-9 items-center justify-center rounded-lg text-xs font-semibold transition-colors",
+            viewMode === "map"
+              ? "bg-[#2B4628] text-[#F7F7F4] shadow-[0_2px_8px_rgba(43,70,40,0.22)]"
+              : "text-[#6E6D5F] hover:text-[#13150C]",
+          ].join(" ")}
+        >
+          Mapa interactivo ({filteredProducers.length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setViewMode("list")}
+          className={[
+            "flex h-9 items-center justify-center rounded-lg text-xs font-semibold transition-colors",
+            viewMode === "list"
+              ? "bg-[#2B4628] text-[#F7F7F4] shadow-[0_2px_8px_rgba(43,70,40,0.22)]"
+              : "text-[#6E6D5F] hover:text-[#13150C]",
+          ].join(" ")}
+        >
+          Lista cercana
+        </button>
+      </div>
+
+      {/* 2. Buscador Directo y Limpio */}
       {!onlySaved && (
         <div className="relative w-full">
           <Search
@@ -140,7 +175,7 @@ export function BuyerRadarView({
         </div>
       )}
 
-      {/* 2. Chips de Categorías (Solo texto limpio, cero íconos) */}
+      {/* 3. Chips de Categorías (Solo texto limpio, cero íconos) */}
       <div
         className="nafe-scroll -mx-1 flex flex-nowrap items-center gap-1.5 overflow-x-auto px-1 pb-0.5"
         role="tablist"
@@ -169,72 +204,42 @@ export function BuyerRadarView({
         })}
       </div>
 
-      {/* 3. Ordenamiento y Selector Lista / Mapa (Cero íconos decorativos) */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#EFEFEA] p-1">
-          <button
-            type="button"
-            onClick={() => setSortBy("distance")}
-            className={[
-              "h-full rounded-md px-2.5 text-xs font-semibold transition-colors",
-              sortBy === "distance"
-                ? "bg-[#FFFFFF] text-[#13150C]"
-                : "text-[#6E6D5F] hover:text-[#13150C]",
-            ].join(" ")}
-          >
-            Cercanía ({filteredProducers.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setSortBy("rating")}
-            className={[
-              "inline-flex h-full items-center gap-1 rounded-md px-2.5 text-xs font-semibold transition-colors",
-              sortBy === "rating"
-                ? "bg-[#FFFFFF] text-[#13150C]"
-                : "text-[#6E6D5F] hover:text-[#13150C]",
-            ].join(" ")}
-          >
-            <Star
-              className="h-3.5 w-3.5 text-[#C88A1E]"
-              fill="currentColor"
-              strokeWidth={1.6}
-            />
-            <span>Calificación</span>
-          </button>
+      {/* 4. Ordenamiento (visible en modo Lista) */}
+      {viewMode === "list" && (
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#EFEFEA] p-1">
+            <button
+              type="button"
+              onClick={() => setSortBy("distance")}
+              className={[
+                "h-full rounded-md px-2.5 text-xs font-semibold transition-colors",
+                sortBy === "distance"
+                  ? "bg-[#FFFFFF] text-[#13150C]"
+                  : "text-[#6E6D5F] hover:text-[#13150C]",
+              ].join(" ")}
+            >
+              Cercanía ({filteredProducers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortBy("rating")}
+              className={[
+                "inline-flex h-full items-center gap-1 rounded-md px-2.5 text-xs font-semibold transition-colors",
+                sortBy === "rating"
+                  ? "bg-[#FFFFFF] text-[#13150C]"
+                  : "text-[#6E6D5F] hover:text-[#13150C]",
+              ].join(" ")}
+            >
+              <Star
+                className="h-3.5 w-3.5 text-[#C88A1E]"
+                fill="currentColor"
+                strokeWidth={1.6}
+              />
+              <span>Calificación</span>
+            </button>
+          </div>
         </div>
-
-        <div
-          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-[#EFEFEA] p-1"
-          role="group"
-          aria-label="Vista"
-        >
-          <button
-            type="button"
-            onClick={() => setViewMode("list")}
-            className={[
-              "h-full rounded-md px-3 text-xs font-semibold transition-colors",
-              viewMode === "list"
-                ? "bg-[#2B4628] text-[#F7F7F4]"
-                : "text-[#6E6D5F] hover:text-[#13150C]",
-            ].join(" ")}
-          >
-            Lista
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setViewMode("map")}
-            className={[
-              "h-full rounded-md px-3 text-xs font-semibold transition-colors",
-              viewMode === "map"
-                ? "bg-[#2B4628] text-[#F7F7F4]"
-                : "text-[#6E6D5F] hover:text-[#13150C]",
-            ].join(" ")}
-          >
-            Mapa
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* 4. Vista Lista o Mapa */}
       <AnimatePresence mode="wait">
