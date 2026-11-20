@@ -2,12 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fs;
 use tauri::Manager;
+use tauri_plugin_notification::NotificationExt;
 
 const EARTH_RADIUS_KM: f64 = 6371.0;
 const OFFLINE_CACHE_FILE: &str = "nafe_offline_cache.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProducerGeoItem {
+pub struct BusinessGeoItem {
     pub id: String,
     pub approx_lat: f64,
     pub approx_lng: f64,
@@ -32,18 +33,18 @@ pub fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     ((EARTH_RADIUS_KM * c) * 10.0).round() / 10.0
 }
 
-/// 1. Filtra y ordena productores por distancia real (Haversine) en milisegundos.
+/// 1. Filtra y ordena negocios por distancia real (Haversine) en milisegundos.
 #[tauri::command]
 pub fn filter_and_sort_by_distance(
     user_lat: f64,
     user_lng: f64,
     max_radius_km: f64,
-    producers_json: String,
+    businesses_json: String,
 ) -> Result<String, String> {
-    let items: Vec<ProducerGeoItem> = serde_json::from_str(&producers_json)
-        .map_err(|e| format!("Error al deserializar productores: {}", e))?;
+    let items: Vec<BusinessGeoItem> = serde_json::from_str(&businesses_json)
+        .map_err(|e| format!("Error al deserializar negocios: {}", e))?;
 
-    let mut nearby: Vec<ProducerGeoItem> = items
+    let mut nearby: Vec<BusinessGeoItem> = items
         .into_iter()
         .filter_map(|mut item| {
             let dist = haversine_km(user_lat, user_lng, item.approx_lat, item.approx_lng);
@@ -63,7 +64,7 @@ pub fn filter_and_sort_by_distance(
     });
 
     serde_json::to_string(&nearby)
-        .map_err(|e| format!("Error al serializar productores: {}", e))
+        .map_err(|e| format!("Error al serializar negocios: {}", e))
 }
 
 /// 2. Guarda el caché offline en app_data_dir()/nafe_offline_cache.json
@@ -99,15 +100,32 @@ pub fn load_offline_cache(app: tauri::AppHandle) -> Result<String, String> {
         .map_err(|e| format!("Error al leer caché offline: {}", e))
 }
 
+/// 4. Dispara notificación nativa en Android / Desktop cuando un favorito tiene stock.
+#[tauri::command]
+pub fn notify_favorite_stock(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    app.notification()
+        .builder()
+        .title(&title)
+        .body(&body)
+        .show()
+        .map_err(|e| format!("Error al mostrar notificación nativa: {}", e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_geolocation::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             filter_and_sort_by_distance,
             save_offline_cache,
-            load_offline_cache
+            load_offline_cache,
+            notify_favorite_stock
         ])
         .run(tauri::generate_context!())
         .expect("error al ejecutar la aplicación Tauri NAFE");

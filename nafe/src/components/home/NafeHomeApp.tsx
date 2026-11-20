@@ -1,43 +1,38 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  User,
-  ShoppingBasket,
-  Sprout,
-  HeartHandshake,
-  LogOut,
-  Check,
-  ArrowLeft,
-  Compass,
-} from "lucide-react";
 import {
   UserRole,
   LocalProfile,
   loadLocalProfile,
   saveLocalProfile,
   PROFILE_CHANGE_EVENT,
+  getInitials,
 } from "@/components/auth/validators";
 import {
   ProducerPost,
-  INITIAL_MOCK_PRODUCERS,
-  fetchProducerPostsFromSupabaseOrCache,
-  loadSavedProducerIds,
-  saveSavedProducerIds,
-} from "@/data/mockProducers";
+  AppNotification,
+  ChatConversation,
+  fetchBusinessesFromSupabase,
+  loadSavedBusinessIds,
+  toggleSavedBusinessId,
+  getOrCreateConversation,
+  fetchNotifications,
+  markNotificationsRead,
+} from "@/lib/businesses";
 import {
   supabase,
   updateProfileInSupabase,
   signOutFromSupabase,
 } from "@/lib/supabase";
+import { haru, DEFAULT_HARU_COORDS } from "@/lib/haru";
+import { lily } from "@/lib/lily";
 import {
-  DEFAULT_CENTER_COORDS,
   GeoCoordinates,
-  getCurrentLocation,
-  loadLastKnownLocation,
+  triggerNativeStockNotification,
 } from "@/lib/nativeBridge";
 import { usePlatform } from "@/lib/platform";
 import { HomeHeader, ActiveWorkspaceMode } from "./HomeHeader";
@@ -45,6 +40,8 @@ import { BuyerRadarView } from "./BuyerRadarView";
 import { ProducerPanelView } from "./ProducerPanelView";
 import { ProducerDetailSheet } from "./ProducerDetailSheet";
 import { SellerProfileSheet } from "./SellerProfileSheet";
+import { LiveChatView } from "./LiveChatView";
+import { SubscriptionModal } from "./SubscriptionModal";
 import { BottomNav, BottomNavTab } from "./BottomNav";
 
 const DEFAULT_PROFILE: LocalProfile = {
@@ -52,6 +49,8 @@ const DEFAULT_PROFILE: LocalProfile = {
   contact: "",
   role: "both",
   searchRadiusKm: 10,
+  subscriptionTier: "free",
+  isVerified: false,
   authenticatedAt: "",
 };
 
@@ -71,30 +70,35 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
   const [activeWorkspace, setActiveWorkspace] =
     useState<ActiveWorkspaceMode>("buyer");
   const [activeTab, setActiveTab] = useState<BottomNavTab>("radar");
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline] = useState(false);
 
-  // Real location state (instant cached restore + live GPS/IP/Nominatim refresh)
+  // Real location state via `haru`
   const [userCoords, setUserCoords] = useState<GeoCoordinates>(
-    DEFAULT_CENTER_COORDS
+    DEFAULT_HARU_COORDS
   );
   const [cityLabel, setCityLabel] = useState<string>("Centro, Durango");
   const [isLocating, setIsLocating] = useState<boolean>(true);
-  const [isLocationFallback, setIsLocationFallback] = useState<boolean>(false);
 
   const [searchRadiusKm, setSearchRadiusKm] = useState<number>(10);
 
-  const [producers, setProducers] = useState<ProducerPost[]>(
-    INITIAL_MOCK_PRODUCERS
-  );
-  const [savedIds, setSavedIds] = useState<string[]>([
-    "11111111-1111-4111-8111-111111111101",
-    "11111111-1111-4111-8111-111111111104",
-  ]);
+  const [producers, setProducers] = useState<ProducerPost[]>([]);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
   const [selectedProducer, setSelectedProducer] =
     useState<ProducerPost | null>(null);
   const [selectedSellerName, setSelectedSellerName] = useState<string | null>(
     null
   );
+
+  // Live Chat & Subscription Modal state
+  const [activeConversation, setActiveConversation] =
+    useState<ChatConversation | null>(null);
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] =
+    useState<boolean>(false);
+
+  // Notifications & Avatar upload (`lily`) state
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const syncProfileFromStorage = useCallback(() => {
     const loaded = loadLocalProfile();
@@ -113,7 +117,7 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
 
   useEffect(() => {
     syncProfileFromStorage();
-    setSavedIds(loadSavedProducerIds());
+    setSavedIds(loadSavedBusinessIds());
 
     window.addEventListener(PROFILE_CHANGE_EVENT, syncProfileFromStorage);
     return () => {
@@ -121,62 +125,130 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
     };
   }, [syncProfileFromStorage]);
 
-  // Fast, guaranteed real location resolver (with manual refresh trigger)
-  const refreshUserLocation = useCallback(async () => {
+  const refreshUserLocation = useCallback(async (forceRefresh = true) => {
     setIsLocating(true);
     try {
-      const loc = await getCurrentLocation();
-      setUserCoords(loc.coords);
+      const loc = await haru({ forceRefresh });
+      setUserCoords({ lat: loc.lat, lng: loc.lng });
       setCityLabel(loc.cityLabel);
-      setIsLocationFallback(loc.isFallback);
-
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          await supabase
-            .from("profiles")
-            .update({
-              last_lat: loc.coords.lat,
-              last_lng: loc.coords.lng,
-              city_label: loc.cityLabel,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", user.id);
-        }
-      } catch {
-        // Ignore when offline
-      }
     } finally {
       setIsLocating(false);
     }
   }, []);
 
   useEffect(() => {
-    // Hydrate instantly with last known location so UI never stalls
-    const cachedLoc = loadLastKnownLocation();
-    if (cachedLoc) {
-      setUserCoords(cachedLoc.coords);
-      setCityLabel(cachedLoc.cityLabel);
-    }
-    refreshUserLocation();
+    refreshUserLocation(false);
   }, [refreshUserLocation]);
 
-  // Fetch from Supabase (or Rust/localStorage offline cache) and compute real Haversine distances
   useEffect(() => {
     let active = true;
-    fetchProducerPostsFromSupabaseOrCache(
-      isOffline,
-      userCoords,
-      searchRadiusKm
-    ).then((list) => {
-      if (active) setProducers(list);
-    });
+    const reloadBusinesses = () => {
+      fetchBusinessesFromSupabase(isOffline, userCoords, searchRadiusKm).then(
+        (list) => {
+          if (active) setProducers(list);
+        }
+      );
+    };
+
+    reloadBusinesses();
+
+    // Sincronización en TIEMPO REAL (Empresa <-> Cliente en teléfono) vía Supabase Realtime
+    const realtimeBusinessesChannel = supabase
+      .channel("nafe-businesses-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "businesses",
+        },
+        () => {
+          reloadBusinesses();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "reviews",
+        },
+        () => {
+          reloadBusinesses();
+        }
+      )
+      .subscribe();
+
     return () => {
       active = false;
+      void supabase.removeChannel(realtimeBusinessesChannel);
     };
   }, [isOffline, userCoords, searchRadiusKm]);
+
+  useEffect(() => {
+    let active = true;
+    fetchNotifications().then((items) => {
+      if (active) setNotifications(items);
+    });
+
+    const channel = supabase
+      .channel("nafe-stock-notifications")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          if (profile.userId && row.user_id && row.user_id !== profile.userId) {
+            return;
+          }
+          const incoming: AppNotification = {
+            id: String(row.id ?? `notif-${Date.now()}`),
+            businessId: row.business_id ? String(row.business_id) : undefined,
+            title: String(row.title ?? "Novedad en tu radar"),
+            body: String(
+              row.body ?? "Un negocio favorito actualizó su inventario."
+            ),
+            isRead: false,
+            createdAt: String(row.created_at ?? new Date().toISOString()),
+          };
+          setNotifications((prev) => [incoming, ...prev]);
+          triggerNativeStockNotification(incoming.title, incoming.body);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [profile.userId]);
+
+  const handleMarkNotificationsRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    await markNotificationsRead();
+  };
+
+  // Execute mandatory `lily(file, userId)` profile photo uploader
+  const handleAvatarFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingAvatar(true);
+    try {
+      const effectiveUserId = profile.userId || "local-user";
+      const avatarUrl = await lily(file, effectiveUserId);
+      const updated = await updateProfileInSupabase({ avatarUrl });
+      setProfile(updated);
+    } finally {
+      setIsUploadingAvatar(false);
+      e.target.value = "";
+    }
+  };
 
   const handleRoleChange = async (nextRole: UserRole) => {
     const updated = await updateProfileInSupabase({ role: nextRole });
@@ -198,14 +270,89 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
     setProfile(updated);
   };
 
-  const handleToggleSave = (id: string) => {
-    setSavedIds((prev) => {
-      const next = prev.includes(id)
-        ? prev.filter((item) => item !== id)
-        : [...prev, id];
-      saveSavedProducerIds(next);
-      return next;
+  const handleToggleSave = async (id: string) => {
+    const isCurrentlySaved = savedIds.includes(id);
+    const nextIds = await toggleSavedBusinessId(id, savedIds);
+    setSavedIds(nextIds);
+
+    if (!isCurrentlySaved) {
+      const target = producers.find((p) => p.id === id);
+      if (target) {
+        const previewNotif: AppNotification = {
+          id: `fav-${Date.now()}`,
+          businessId: target.id,
+          title: `Guardaste ${target.producerName}`,
+          body: `Recibirás aviso cuando publique stock de ${target.productTitle}.`,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        };
+        setNotifications((prev) => [previewNotif, ...prev]);
+      }
+    }
+  };
+
+  const handleOpenChatWithBusiness = async (business: ProducerPost) => {
+    setSelectedProducer(null);
+    setSelectedSellerName(null);
+    const conv = await getOrCreateConversation({
+      businessId: business.id,
+      businessName: business.productTitle,
+      producerName: business.producerName,
     });
+    setActiveConversation(conv);
+    setActiveTab("chats");
+  };
+
+  const handleStockNotificationCreated = (title: string, body: string) => {
+    setNotifications((prev) => [
+      {
+        id: `stock-${Date.now()}`,
+        title,
+        body,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleReviewSubmitted = (businessId: string, newRating: number) => {
+    setProducers((prev) =>
+      prev.map((item) => {
+        if (item.id !== businessId) return item;
+        const nextCount = item.reviewsCount + 1;
+        const nextAvg =
+          Number(
+            (
+              (item.avgRating * item.reviewsCount + newRating) /
+              nextCount
+            ).toFixed(1)
+          ) || newRating;
+        return {
+          ...item,
+          avgRating: nextAvg,
+          reviewsCount: nextCount,
+        };
+      })
+    );
+    if (selectedProducer && selectedProducer.id === businessId) {
+      setSelectedProducer((prev) => {
+        if (!prev) return null;
+        const nextCount = prev.reviewsCount + 1;
+        const nextAvg =
+          Number(
+            (
+              (prev.avgRating * prev.reviewsCount + newRating) /
+              nextCount
+            ).toFixed(1)
+          ) || newRating;
+        return {
+          ...prev,
+          avgRating: nextAvg,
+          reviewsCount: nextCount,
+        };
+      });
+    }
   };
 
   const handlePostCreated = (newPost: ProducerPost) => {
@@ -219,6 +366,9 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
     setProducers((prev) =>
       prev.map((item) => (item.id === postId ? { ...item, ...patch } : item))
     );
+    if (selectedProducer && selectedProducer.id === postId) {
+      setSelectedProducer((prev) => (prev ? { ...prev, ...patch } : null));
+    }
   };
 
   const handlePostDeleted = (postId: string) => {
@@ -244,38 +394,78 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
   const renderProfilePanel = () => (
     <motion.div
       key="profile-view"
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.24 }}
-      className="space-y-4 pb-8"
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.2 }}
+      className="space-y-3.5 pb-8"
     >
-      {/* Account Summary Card */}
-      <section className="rounded-xl border border-[#949172]/40 bg-white/80 p-5 shadow-xs">
+      {/* Resumen de Cuenta con Subida `lily` */}
+      <section className="space-y-3.5 rounded-xl bg-[#FFFFFF] p-4 shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
         <div className="flex items-center gap-3.5">
-          <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-lg bg-[#3D562F] text-white">
-            <User className="h-6 w-6" />
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={isUploadingAvatar}
+              className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-[#2B4628] text-sm font-semibold text-[#F7F7F4]"
+            >
+              {profile.avatarUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={profile.avatarUrl}
+                  alt={profile.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span>{getInitials(profile.name)}</span>
+              )}
+            </button>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarFileChange}
+              className="hidden"
+            />
           </div>
+
           <div className="min-w-0 flex-1">
-            <h2 className="truncate font-serif text-[24px] font-medium text-[#13150C]/80">
-              {profile.name}
-            </h2>
-            <p className="truncate text-[13px] text-[#13150C]/65">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="truncate text-lg font-semibold tracking-tight text-[#13150C]">
+                {profile.name}
+              </h2>
+              {profile.isVerified && (
+                <span className="rounded-md bg-[#1F3A26] px-2 py-0.5 text-xs font-medium text-[#F4F7F4]">
+                  Verificado
+                </span>
+              )}
+            </div>
+            <p className="truncate text-xs text-[#6E6D5F]">
               {profile.contact || cityLabel}
             </p>
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={isUploadingAvatar}
+              className="mt-1.5 rounded-md bg-[#EFEFEA] px-2.5 py-1 text-xs font-medium text-[#13150C] transition-colors hover:bg-[#e5e5de]"
+            >
+              {isUploadingAvatar ? "Subiendo…" : "Cambiar foto"}
+            </button>
           </div>
         </div>
 
-        <div className="mt-4 border-t border-[#949172]/25 pt-3">
+        <div>
           <label
             htmlFor="profile-name-input"
-            className="mb-1 block text-[12px] font-semibold text-[#13150C]/75"
+            className="mb-1 block text-xs font-medium text-[#6E6D5F]"
           >
-            Tu nombre en la comunidad
+            Nombre
           </label>
           <input
             id="profile-name-input"
             type="text"
+            placeholder="Nombre"
             value={profile.name}
             onChange={(e) => {
               const next = { ...profile, name: e.target.value };
@@ -283,23 +473,37 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
               saveLocalProfile(next);
             }}
             onBlur={() => updateProfileInSupabase({ name: profile.name })}
-            className="h-[46px] w-full rounded-lg border border-[#949172]/40 bg-[#DEDED8]/50 px-3.5 text-[14px] text-[#13150C] outline-none focus:border-[#3D562F] focus:bg-white"
+            className="h-10 w-full rounded-lg bg-[#EFEFEA] px-3 text-sm text-[#13150C] outline-none focus:bg-[#FFFFFF]"
           />
         </div>
       </section>
 
-      {/* Search Radius Selector (5, 10, 25, 50 km) */}
-      <section className="rounded-xl border border-[#949172]/40 bg-white/80 p-5 space-y-3">
+      {/* Plan Actual */}
+      <section className="flex items-center justify-between gap-3 rounded-xl bg-[#FFFFFF] p-4 shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
         <div className="flex items-center gap-2">
-          <Compass className="h-4 w-4 text-[#3D562F]" />
-          <h3 className="font-serif text-[20px] font-medium text-[#13150C]/80">
-            Radio de búsqueda
-          </h3>
+          <span className="text-sm font-semibold text-[#13150C]">Plan</span>
+          <span className="rounded-md bg-[#1F3A26] px-2 py-0.5 text-xs font-medium text-[#F4F7F4]">
+            {profile.subscriptionTier === "coop"
+              ? "Cooperativa"
+              : profile.subscriptionTier === "pro"
+                ? "Cosecha"
+                : "Semilla"}
+          </span>
         </div>
-        <p className="text-[13px] text-[#13150C]/65">
-          Ajusta la distancia máxima para explorar productores y oficios en tu
-          radar.
-        </p>
+        <button
+          type="button"
+          onClick={() => setIsSubscriptionModalOpen(true)}
+          className="h-8 shrink-0 rounded-lg bg-[#EFEFEA] px-3 text-xs font-semibold text-[#13150C] transition-colors hover:bg-[#2B4628] hover:text-[#F7F7F4]"
+        >
+          Planes
+        </button>
+      </section>
+
+      {/* Radio de búsqueda */}
+      <section className="space-y-2.5 rounded-xl bg-[#FFFFFF] p-4 shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
+        <h3 className="text-sm font-semibold text-[#13150C]">
+          Radio de búsqueda
+        </h3>
 
         <div className="grid grid-cols-4 gap-2">
           {RADIUS_CHOICES.map((km) => (
@@ -308,10 +512,10 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
               type="button"
               onClick={() => handleRadiusChange(km)}
               className={[
-                "h-11 rounded-lg border text-[13.5px] font-semibold transition-colors",
+                "h-9 rounded-lg text-xs font-semibold transition-colors",
                 searchRadiusKm === km
-                  ? "border-[#3D562F] bg-[#3D562F] text-[#DEDED8]"
-                  : "border-[#949172]/40 bg-[#DEDED8]/45 text-[#13150C] hover:bg-white",
+                  ? "bg-[#2B4628] text-[#F7F7F4]"
+                  : "bg-[#EFEFEA] text-[#13150C] hover:bg-[#e5e5de]",
               ].join(" ")}
             >
               {km} km
@@ -320,41 +524,18 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
         </div>
       </section>
 
-      {/* Role Selector (Exclusively inside Profile) */}
-      <section className="rounded-xl border border-[#949172]/40 bg-white/80 p-5 space-y-3">
-        <div>
-          <h3 className="font-serif text-[21px] font-medium text-[#13150C]/80">
-            Tu rol en NAFE
-          </h3>
-          <p className="mt-0.5 text-[13px] text-[#13150C]/65">
-            Elige cómo deseas participar en tu comunidad.
-          </p>
-        </div>
+      {/* Selector de Rol (Cero cajas de íconos, cero subtítulos) */}
+      <section className="space-y-2.5 rounded-xl bg-[#FFFFFF] p-4 shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
+        <h3 className="text-sm font-semibold text-[#13150C]">Rol</h3>
 
-        <div className="space-y-2">
+        <div className="grid grid-cols-3 gap-2">
           {(
             [
-              {
-                id: "buyer" as const,
-                title: "Comprador (Explorar cerca)",
-                desc: "Buscador conversacional, lista y mapa con contacto directo.",
-                icon: ShoppingBasket,
-              },
-              {
-                id: "seller" as const,
-                title: "Vendedor / Productor (Mi puesto)",
-                desc: "Perfil de puesto, publicar cosecha con fotos reales y puente SMS.",
-                icon: Sprout,
-              },
-              {
-                id: "both" as const,
-                title: "Ambos (Comprador y Productor)",
-                desc: "Explora el radar y administra tu perfil y publicaciones de vendedor.",
-                icon: HeartHandshake,
-              },
+              { id: "buyer" as const, title: "Comprador" },
+              { id: "seller" as const, title: "Productor" },
+              { id: "both" as const, title: "Ambos" },
             ]
           ).map((opt) => {
-            const Icon = opt.icon;
             const selected = profile.role === opt.id;
             return (
               <button
@@ -362,60 +543,36 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
                 type="button"
                 onClick={() => handleRoleChange(opt.id)}
                 className={[
-                  "flex w-full items-center gap-3.5 rounded-xl border-2 p-3.5 text-left transition-all",
+                  "h-10 rounded-lg px-3 text-xs font-semibold transition-colors",
                   selected
-                    ? "border-[#3D562F] bg-[#DBF7EC]"
-                    : "border-[#949172]/35 bg-[#DEDED8]/40 hover:bg-white",
+                    ? "bg-[#2B4628] text-[#F7F7F4]"
+                    : "bg-[#EFEFEA] text-[#13150C] hover:bg-[#e5e5de]",
                 ].join(" ")}
               >
-                <div
-                  className={[
-                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                    selected
-                      ? "bg-[#3D562F] text-white"
-                      : "bg-[#DEDED8] text-[#3D562F]",
-                  ].join(" ")}
-                >
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <span className="block text-[14px] font-semibold text-[#13150C]">
-                    {opt.title}
-                  </span>
-                  <span className="block text-[12px] text-[#13150C]/70">
-                    {opt.desc}
-                  </span>
-                </div>
-                {selected && (
-                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#3D562F] text-white">
-                    <Check className="h-3.5 w-3.5" />
-                  </span>
-                )}
+                {opt.title}
               </button>
             );
           })}
         </div>
       </section>
 
-      {/* Session Actions */}
-      <div className="flex flex-col gap-2.5 pt-1">
+      {/* Acciones de Sesión */}
+      <div className="flex flex-col gap-2">
         {!hasStoredAccount && (
           <Link
             href="/"
-            className="flex h-[48px] w-full items-center justify-center gap-2 rounded-lg border border-[#949172]/50 bg-white/75 px-5 text-[14px] font-semibold text-[#13150C] transition-colors hover:bg-white"
+            className="flex h-11 w-full items-center justify-center rounded-lg bg-[#FFFFFF] px-5 text-sm font-medium text-[#13150C] shadow-[0_2px_10px_rgba(19,21,12,0.04)] transition-colors hover:bg-[#EFEFEA]"
           >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Iniciar sesión o crear cuenta</span>
+            Iniciar sesión
           </Link>
         )}
 
         <button
           type="button"
           onClick={handleSignOut}
-          className="flex h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-[#F7DBDB] px-5 text-[14px] font-semibold text-[#7A2B2B] transition-colors hover:bg-[#f2caca]"
+          className="flex h-11 w-full items-center justify-center rounded-lg bg-[#F2DCDC] px-5 text-sm font-medium text-[#7A2727] transition-colors hover:bg-[#ebcaca]"
         >
-          <LogOut className="h-4 w-4" />
-          <span>Cerrar sesión</span>
+          Cerrar sesión
         </button>
       </div>
     </motion.div>
@@ -424,6 +581,39 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
   const renderMainContent = (isDesktopView: boolean) => {
     if (activeTab === "profile") {
       return renderProfilePanel();
+    }
+
+    if (activeTab === "chats") {
+      return (
+        <LiveChatView
+          userName={profile.name}
+          userAvatar={profile.avatarUrl}
+          userId={profile.userId}
+          userRole={profile.role}
+          activeConversation={activeConversation}
+          onSelectConversation={setActiveConversation}
+          onSaleMetricsChanged={(businessId, completedDelta, verifiedDelta) => {
+            setProducers((prev) =>
+              prev.map((item) =>
+                item.id === businessId
+                  ? {
+                      ...item,
+                      completedSalesCount: Math.max(
+                        0,
+                        (item.completedSalesCount || 0) + completedDelta
+                      ),
+                      verifiedSalesCount: Math.max(
+                        0,
+                        (item.verifiedSalesCount || 0) + verifiedDelta
+                      ),
+                    }
+                  : item
+              )
+            );
+          }}
+          onReviewSubmitted={handleReviewSubmitted}
+        />
+      );
     }
 
     if (activeTab === "seller" && showSellerAccess) {
@@ -437,32 +627,29 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
           onPostUpdated={handlePostUpdated}
           onPostDeleted={handlePostDeleted}
           onProfileUpdated={setProfile}
+          onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+          onStockNotificationCreated={handleStockNotificationCreated}
         />
       );
     }
 
     if (activeTab === "saved") {
       return (
-        <div className="space-y-3">
-          <div className="rounded-md border border-[#3D562F]/20 bg-[#DBF7EC]/80 px-4 py-3 text-[13px] font-medium text-[#13150C]">
-            Productores y oficios guardados para consulta rápida incluso sin
-            conexión.
-          </div>
-          <BuyerRadarView
-            userName={profile.name}
-            userCoords={userCoords}
-            cityLabel={cityLabel}
-            searchRadiusKm={searchRadiusKm}
-            onChangeRadius={handleRadiusChange}
-            producers={producers}
-            savedIds={savedIds}
-            onToggleSave={handleToggleSave}
-            onSelectProducer={setSelectedProducer}
-            onOpenSellerProfile={setSelectedSellerName}
-            onlySaved
-            isDesktop={isDesktopView}
-          />
-        </div>
+        <BuyerRadarView
+          userName={profile.name}
+          userCoords={userCoords}
+          cityLabel={cityLabel}
+          searchRadiusKm={searchRadiusKm}
+          onChangeRadius={handleRadiusChange}
+          producers={producers}
+          savedIds={savedIds}
+          onToggleSave={handleToggleSave}
+          onSelectProducer={setSelectedProducer}
+          onOpenSellerProfile={setSelectedSellerName}
+          onOpenChatWithBusiness={handleOpenChatWithBusiness}
+          onlySaved
+          isDesktop={isDesktopView}
+        />
       );
     }
 
@@ -484,6 +671,8 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
           onPostUpdated={handlePostUpdated}
           onPostDeleted={handlePostDeleted}
           onProfileUpdated={setProfile}
+          onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+          onStockNotificationCreated={handleStockNotificationCreated}
         />
       );
     }
@@ -500,6 +689,7 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
         onToggleSave={handleToggleSave}
         onSelectProducer={setSelectedProducer}
         onOpenSellerProfile={setSelectedSellerName}
+        onOpenChatWithBusiness={handleOpenChatWithBusiness}
         isDesktop={isDesktopView}
       />
     );
@@ -510,28 +700,30 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
   // ============================================================================
   if (platform === "pc") {
     return (
-      <div className="min-h-dvh w-full bg-[#DEDED8] text-[#13150C]">
+      <div className="min-h-dvh w-full bg-[#F7F7F4] text-[#13150C]">
         <div className="mx-auto flex min-h-dvh max-w-[1240px] flex-col justify-between px-6 py-5">
           <div>
             <HomeHeader
               userName={profile.name}
+              userAvatar={profile.avatarUrl}
+              isVerified={profile.isVerified}
               role={profile.role}
               cityLabel={cityLabel}
               isLocating={isLocating}
-              isLocationFallback={isLocationFallback}
-              onRefreshLocation={refreshUserLocation}
+              onRefreshLocation={() => refreshUserLocation(true)}
               activeWorkspace={activeWorkspace}
               onChangeWorkspace={(mode) => {
                 setActiveWorkspace(mode);
                 setActiveTab(mode === "seller" ? "seller" : "radar");
               }}
-              isOffline={isOffline}
-              onToggleOffline={() => setIsOffline((prev) => !prev)}
+              notifications={notifications}
+              onMarkNotificationsRead={handleMarkNotificationsRead}
+              onOpenProfile={() => setActiveTab("profile")}
             />
 
-            {/* Clean Desktop Navigation Bar */}
-            <div className="my-4 flex flex-wrap items-center justify-between gap-3 border-y border-[#949172]/30 py-3">
-              <div className="flex items-center gap-2">
+            {/* Barra de navegación de escritorio */}
+            <div className="my-3 flex flex-wrap items-center justify-between gap-2 py-1.5">
+              <div className="flex items-center gap-1.5">
                 {(
                   [
                     { id: "radar" as const, label: "Explorar" },
@@ -539,6 +731,7 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
                       id: "saved" as const,
                       label: `Guardados (${savedIds.length})`,
                     },
+                    { id: "chats" as const, label: "Chats" },
                     ...(showSellerAccess
                       ? [{ id: "seller" as const, label: "Mi puesto" }]
                       : []),
@@ -556,10 +749,10 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
                         if (item.id === "seller") setActiveWorkspace("seller");
                       }}
                       className={[
-                        "rounded-lg px-4 py-2 text-[13.5px] font-semibold transition-all",
+                        "rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all",
                         active
-                          ? "bg-[#3D562F] text-[#DEDED8] shadow-2xs"
-                          : "border border-[#949172]/40 bg-white/60 text-[#13150C] hover:bg-white",
+                          ? "bg-[#2B4628] text-[#F7F7F4]"
+                          : "bg-[#FFFFFF] text-[#13150C] shadow-[0_2px_10px_rgba(19,21,12,0.04)] hover:bg-[#EFEFEA]",
                       ].join(" ")}
                     >
                       {item.label}
@@ -571,24 +764,27 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
               {!hasStoredAccount && (
                 <Link
                   href="/"
-                  className="rounded-lg border border-[#949172]/45 bg-white/60 px-3.5 py-1.5 text-[13px] font-semibold text-[#13150C] transition-colors hover:border-[#3D562F] hover:bg-white"
+                  className="rounded-lg bg-[#FFFFFF] px-3 py-1.5 text-sm font-medium text-[#13150C] shadow-[0_2px_10px_rgba(19,21,12,0.04)] transition-colors hover:bg-[#EFEFEA]"
                 >
                   Iniciar sesión
                 </Link>
               )}
             </div>
 
-            <main className="pt-2">{renderMainContent(true)}</main>
+            <main className="pt-1">{renderMainContent(true)}</main>
           </div>
 
           <ProducerDetailSheet
             producer={selectedProducer}
+            reviewerName={profile.name}
             onClose={() => setSelectedProducer(null)}
             isSaved={
               selectedProducer ? savedIds.includes(selectedProducer.id) : false
             }
             onToggleSave={handleToggleSave}
             onOpenSellerProfile={setSelectedSellerName}
+            onOpenChat={handleOpenChatWithBusiness}
+            onReviewSubmitted={handleReviewSubmitted}
           />
 
           <SellerProfileSheet
@@ -596,6 +792,13 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
             allProducers={producers}
             onClose={() => setSelectedSellerName(null)}
             onSelectPost={setSelectedProducer}
+          />
+
+          <SubscriptionModal
+            isOpen={isSubscriptionModalOpen}
+            currentTier={profile.subscriptionTier || "free"}
+            onClose={() => setIsSubscriptionModalOpen(false)}
+            onUpgraded={setProfile}
           />
         </div>
       </div>
@@ -609,36 +812,38 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
     <div
       className={
         forcedMobile
-          ? "flex h-full w-full flex-col overflow-hidden bg-[#DEDED8]"
-          : "flex min-h-dvh w-full items-center justify-center bg-[#C9C8BE] sm:p-4"
+          ? "flex h-full w-full flex-col overflow-hidden bg-[#F7F7F4]"
+          : "flex min-h-dvh w-full items-center justify-center bg-[#EFEFEA] sm:p-4"
       }
     >
       <div
         className={
           forcedMobile
-            ? "relative flex h-full w-full flex-col overflow-hidden bg-[#DEDED8]"
-            : "relative flex h-dvh w-full max-w-[430px] flex-col overflow-hidden bg-[#DEDED8] sm:h-[min(860px,94dvh)] sm:rounded-2xl sm:shadow-[0_24px_70px_rgba(19,21,12,0.22)] sm:ring-1 sm:ring-[#13150C]/10"
+            ? "relative flex h-full w-full flex-col overflow-hidden bg-[#F7F7F4]"
+            : "relative flex h-dvh w-full max-w-[430px] flex-col overflow-hidden bg-[#F7F7F4] sm:h-[min(860px,94dvh)] sm:rounded-2xl sm:shadow-[0_24px_70px_rgba(19,21,12,0.16)]"
         }
       >
-        <div className="shrink-0 border-b border-[#949172]/25 bg-[#DEDED8] px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+        <div className="shrink-0 bg-[#F7F7F4] px-4 pt-[max(1rem,env(safe-area-inset-top))]">
           <HomeHeader
             userName={profile.name}
+            userAvatar={profile.avatarUrl}
+            isVerified={profile.isVerified}
             role={profile.role}
             cityLabel={cityLabel}
             isLocating={isLocating}
-            isLocationFallback={isLocationFallback}
-            onRefreshLocation={refreshUserLocation}
+            onRefreshLocation={() => refreshUserLocation(true)}
             activeWorkspace={activeWorkspace}
             onChangeWorkspace={(mode) => {
               setActiveWorkspace(mode);
               setActiveTab(mode === "seller" ? "seller" : "radar");
             }}
-            isOffline={isOffline}
-            onToggleOffline={() => setIsOffline((prev) => !prev)}
+            notifications={notifications}
+            onMarkNotificationsRead={handleMarkNotificationsRead}
+            onOpenProfile={() => setActiveTab("profile")}
           />
         </div>
 
-        <main className="nafe-scroll flex-1 overflow-y-auto px-4 pt-4">
+        <main className="nafe-scroll flex-1 overflow-y-auto px-4 pt-2.5">
           <AnimatePresence mode="wait">
             {renderMainContent(false)}
           </AnimatePresence>
@@ -657,12 +862,15 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
 
         <ProducerDetailSheet
           producer={selectedProducer}
+          reviewerName={profile.name}
           onClose={() => setSelectedProducer(null)}
           isSaved={
             selectedProducer ? savedIds.includes(selectedProducer.id) : false
           }
           onToggleSave={handleToggleSave}
           onOpenSellerProfile={setSelectedSellerName}
+          onOpenChat={handleOpenChatWithBusiness}
+          onReviewSubmitted={handleReviewSubmitted}
         />
 
         <SellerProfileSheet
@@ -670,6 +878,13 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
           allProducers={producers}
           onClose={() => setSelectedSellerName(null)}
           onSelectPost={setSelectedProducer}
+        />
+
+        <SubscriptionModal
+          isOpen={isSubscriptionModalOpen}
+          currentTier={profile.subscriptionTier || "free"}
+          onClose={() => setIsSubscriptionModalOpen(false)}
+          onUpgraded={setProfile}
         />
       </div>
     </div>

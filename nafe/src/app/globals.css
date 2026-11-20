@@ -1,23 +1,37 @@
 @import "tailwindcss";
 
 :root {
-  --nafe-sand: #DEDED8;
-  --nafe-forest: #3D562F;
-  --nafe-mint: #DBF7EC;
-  --nafe-blush: #F7DBDB;
-  --nafe-earth: #949172;
+  --nafe-bg: #F7F7F4;
+  --nafe-surface: #FFFFFF;
+  --nafe-secondary: #EFEFEA;
+  --nafe-accent: #2B4628;
+  --nafe-accent-hover: #223820;
+  --nafe-positive-bg: #1F3A26;
+  --nafe-positive-text: #F4F7F4;
+  --nafe-negative-bg: #F2DCDC;
+  --nafe-negative-text: #7A2727;
   --nafe-ink: #13150C;
+  --nafe-muted: #6E6D5F;
+  --nafe-star: #C88A1E;
+  --nafe-pin: #D9383A;
 }
 
 @theme inline {
-  --color-nafe-sand: #DEDED8;
-  --color-nafe-forest: #3D562F;
-  --color-nafe-mint: #DBF7EC;
-  --color-nafe-blush: #F7DBDB;
-  --color-nafe-earth: #949172;
+  --color-nafe-bg: #F7F7F4;
+  --color-nafe-surface: #FFFFFF;
+  --color-nafe-secondary: #EFEFEA;
+  --color-nafe-accent: #2B4628;
+  --color-nafe-accent-hover: #223820;
+  --color-nafe-positive-bg: #1F3A26;
+  --color-nafe-positive-text: #F4F7F4;
+  --color-nafe-negative-bg: #F2DCDC;
+  --color-nafe-negative-text: #7A2727;
   --color-nafe-ink: #13150C;
+  --color-nafe-muted: #6E6D5F;
+  --color-nafe-star: #C88A1E;
+  --color-nafe-pin: #D9383A;
 
-  --color-background: #DEDED8;
+  --color-background: #F7F7F4;
   --color-foreground: #13150C;
 
   --font-sans: var(--font-plus-jakarta-sans), system-ui, -apple-system, sans-serif;
@@ -26,20 +40,18 @@
 
 html,
 body {
-  background-color: #DEDED8;
+  background-color: #F7F7F4;
   color: #13150C;
   font-family: var(--font-plus-jakarta-sans), system-ui, -apple-system, sans-serif;
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Enforce NAFE editorial Newsreader display style with 80% ink opacity */
 .nafe-display {
   font-family: var(--font-newsreader), Georgia, "Times New Roman", serif;
   color: rgb(19 21 12 / 0.8);
 }
 
-/* Smooth momentum scrolling inside mobile sheet containers */
 .nafe-scroll {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;

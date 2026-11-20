@@ -1,174 +1,178 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  MapPin,
-  Wifi,
-  WifiOff,
-  Compass,
-  Store,
-  RefreshCw,
-} from "lucide-react";
-import { UserRole } from "@/components/auth/validators";
+import { Bell, X } from "lucide-react";
+import { UserRole, getInitials } from "@/components/auth/validators";
+import { AppNotification } from "@/lib/businesses";
 
 export type ActiveWorkspaceMode = "buyer" | "seller";
 
 interface HomeHeaderProps {
   userName: string;
+  userAvatar?: string;
+  isVerified?: boolean;
   role: UserRole;
   cityLabel: string;
   isLocating: boolean;
-  isLocationFallback: boolean;
   onRefreshLocation: () => void;
   activeWorkspace: ActiveWorkspaceMode;
   onChangeWorkspace: (mode: ActiveWorkspaceMode) => void;
-  isOffline: boolean;
-  onToggleOffline: () => void;
+  notifications: AppNotification[];
+  onMarkNotificationsRead: () => void;
+  onOpenProfile: () => void;
 }
 
 export function HomeHeader({
   userName,
+  userAvatar,
+  isVerified,
   role,
   cityLabel,
   isLocating,
-  isLocationFallback,
   onRefreshLocation,
   activeWorkspace,
   onChangeWorkspace,
-  isOffline,
-  onToggleOffline,
+  notifications,
+  onMarkNotificationsRead,
+  onOpenProfile,
 }: HomeHeaderProps) {
+  const [showNotifMenu, setShowNotifMenu] = useState(false);
   const firstName = userName.trim().split(/\s+/)[0] || "Alex";
-
-  const contextualSubtitle =
-    activeWorkspace === "seller"
-      ? "Comparte tu producción directa y sin comisiones"
-      : "Esto nace cerca de ti hoy";
-
   const canAccessSellerPanel = role === "seller" || role === "both";
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   return (
-    <header className="space-y-3 pb-3">
-      {/* Top Navbar: Official Logo on Left, Real Location + Refresh & Network Status on Right */}
+    <header className="relative space-y-3 pb-2">
+      {/* Top Navbar */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Link
           href="/"
-          className="inline-flex items-center gap-2.5 focus:outline-none"
+          className="inline-flex items-center gap-2 focus:outline-none"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo.svg"
             alt="NAFE"
-            className="h-9 w-auto object-contain"
+            className="h-8 w-auto object-contain"
           />
-          <span className="font-serif text-xl font-medium tracking-[0.18em] text-[#13150C]/80">
+          <span className="text-sm font-semibold tracking-[0.16em] text-[#13150C]">
             NAFE
           </span>
         </Link>
 
-        {/* Real Nominatim Location Button (with manual GPS refresh) + Network Status */}
         <div className="flex items-center gap-2">
+          {/* Ubicación Real `haru` (Solo texto limpio) */}
           <button
             type="button"
             onClick={onRefreshLocation}
             disabled={isLocating}
-            title={
-              isLocationFallback
-                ? "Ubicación aproximada. Toca para actualizar tu GPS."
-                : "Actualizar mi ubicación GPS"
-            }
-            className={[
-              "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition-colors",
-              isLocationFallback
-                ? "border-[#949172]/55 bg-[#F7DBDB]/55 text-[#13150C]"
-                : "border-[#949172]/40 bg-white/70 text-[#13150C]/85 hover:border-[#3D562F] hover:bg-white",
-            ].join(" ")}
+            className="inline-flex h-8 items-center rounded-lg bg-[#EFEFEA] px-3 text-xs font-medium text-[#13150C] transition-colors hover:bg-[#FFFFFF]"
           >
-            <MapPin className="h-3.5 w-3.5 shrink-0 text-[#3D562F]" />
-            <span className="max-w-[155px] truncate sm:max-w-[230px]">
-              {isLocating ? "Obteniendo ubicación…" : cityLabel}
+            <span className="max-w-[155px] truncate sm:max-w-[220px]">
+              {isLocating ? "Ubicando…" : cityLabel}
             </span>
-            <RefreshCw
-              className={`h-3 w-3 shrink-0 text-[#949172] ${
-                isLocating ? "animate-spin text-[#3D562F]" : ""
-              }`}
-            />
           </button>
 
-          <motion.button
+          {/* Campana de Notificaciones (SIN caja de fondo) */}
+          <button
             type="button"
-            whileTap={{ scale: 0.97 }}
-            onClick={onToggleOffline}
-            aria-pressed={isOffline}
-            title="Alternar modo sin conexión"
-            className={[
-              "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-semibold transition-all duration-200",
-              isOffline
-                ? "border-[#9E4242]/40 bg-[#F7DBDB] text-[#13150C]"
-                : "border-[#3D562F]/30 bg-[#DBF7EC] text-[#3D562F]",
-            ].join(" ")}
+            onClick={() => {
+              setShowNotifMenu((prev) => !prev);
+              if (unreadCount > 0) onMarkNotificationsRead();
+            }}
+            aria-label="Notificaciones"
+            className="relative bg-transparent p-1.5 text-[#13150C]/70 transition-colors hover:text-[#13150C]"
           >
-            {isOffline ? (
-              <>
-                <WifiOff className="h-3.5 w-3.5 text-[#7A2B2B]" />
-                <span>Sin conexión</span>
-              </>
-            ) : (
-              <>
-                <Wifi className="h-3.5 w-3.5 text-[#3D562F]" />
-                <span>En línea</span>
-              </>
+            <Bell className="h-4 w-4" strokeWidth={1.6} />
+            {unreadCount > 0 && (
+              <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[#D9383A]" />
             )}
-          </motion.button>
+          </button>
+
+          {/* Foto de perfil del usuario (`lily`) */}
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            aria-label="Perfil"
+            className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#2B4628] text-xs font-semibold text-[#F7F7F4]"
+          >
+            {userAvatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={userAvatar}
+                alt={userName}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span>{getInitials(userName)}</span>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Soft Offline Banner */}
+      {/* Popover de Notificaciones */}
       <AnimatePresence>
-        {isOffline && (
+        {showNotifMenu && (
           <motion.div
-            key="offline-banner"
-            initial={{ opacity: 0, height: 0, y: -6 }}
-            animate={{ opacity: 1, height: "auto", y: 0 }}
-            exit={{ opacity: 0, height: 0, y: -6 }}
-            transition={{ duration: 0.22 }}
-            className="overflow-hidden"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-2 rounded-xl bg-[#FFFFFF] p-4 shadow-[0_8px_28px_rgba(19,21,12,0.08)]"
           >
-            <div className="flex items-center justify-between gap-2 rounded-md border border-[#949172]/45 bg-[#F7DBDB] px-3.5 py-2.5 text-[12.5px] font-medium text-[#13150C]">
-              <div className="flex items-center gap-2">
-                <WifiOff className="h-4 w-4 shrink-0 text-[#7A2B2B]" />
-                <span>Sin conexión · Datos guardados</span>
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-[#13150C]">
+                Notificaciones
+              </span>
               <button
                 type="button"
-                onClick={onToggleOffline}
-                className="shrink-0 rounded-lg bg-white/80 px-2.5 py-1 text-[11.5px] font-semibold text-[#13150C] hover:bg-white"
+                onClick={() => setShowNotifMenu(false)}
+                aria-label="Cerrar notificaciones"
+                className="bg-transparent p-1.5 text-[#13150C]/55 transition-colors hover:text-[#13150C]"
               >
-                Reconectar
+                <X className="h-4 w-4" strokeWidth={1.6} />
               </button>
             </div>
+
+            {notifications.length === 0 ? (
+              <p className="text-xs text-[#6E6D5F]">Sin notificaciones</p>
+            ) : (
+              <div className="max-h-48 space-y-1.5 overflow-y-auto">
+                {notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className="rounded-lg bg-[#EFEFEA] px-3 py-2 text-xs"
+                  >
+                    <p className="font-medium text-[#13150C]">{n.title}</p>
+                    <p className="mt-0.5 text-[#6E6D5F]">{n.body}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Editorial Greeting + Discrete "Mi puesto" Toggle only if user role is seller or both */}
-      <div className="flex flex-wrap items-end justify-between gap-3 pt-0.5">
-        <div>
-          <h1 className="font-serif text-[30px] sm:text-[32px] font-medium leading-[1.12] tracking-[-0.015em] text-[#13150C]/80">
+      {/* Saludo Principal Único en Newsreader (text-2xl, máx 24px) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-0.5">
+        <div className="flex items-center gap-2">
+          <h1 className="font-serif text-2xl font-medium leading-tight tracking-[-0.015em] text-[#13150C]/80">
             Hola, <span className="italic">{firstName}</span>
           </h1>
-          <p className="mt-1 text-[14px] text-[#13150C]/65">
-            {contextualSubtitle}
-          </p>
+          {isVerified && (
+            <span className="inline-flex items-center rounded-md bg-[#1F3A26] px-2 py-0.5 text-xs font-medium text-[#F4F7F4]">
+              Verificado
+            </span>
+          )}
         </div>
 
         {canAccessSellerPanel && (
           <div
-            className="inline-flex items-center gap-1 rounded-lg border border-[#949172]/35 bg-white/60 p-1"
+            className="inline-flex items-center gap-1 rounded-lg bg-[#EFEFEA] p-1"
             role="tablist"
-            aria-label="Alternar entre Explorar cerca y Mi puesto"
+            aria-label="Modo de vista"
           >
             <button
               type="button"
@@ -176,14 +180,13 @@ export function HomeHeader({
               aria-selected={activeWorkspace === "buyer"}
               onClick={() => onChangeWorkspace("buyer")}
               className={[
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors",
+                "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
                 activeWorkspace === "buyer"
-                  ? "bg-[#3D562F] text-[#DEDED8] shadow-2xs"
-                  : "text-[#13150C]/75 hover:text-[#13150C]",
+                  ? "bg-[#2B4628] text-[#F7F7F4]"
+                  : "text-[#6E6D5F] hover:text-[#13150C]",
               ].join(" ")}
             >
-              <Compass className="h-3.5 w-3.5" />
-              <span>Explorar cerca</span>
+              Explorar
             </button>
 
             <button
@@ -192,14 +195,13 @@ export function HomeHeader({
               aria-selected={activeWorkspace === "seller"}
               onClick={() => onChangeWorkspace("seller")}
               className={[
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors",
+                "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
                 activeWorkspace === "seller"
-                  ? "bg-[#3D562F] text-[#DEDED8] shadow-2xs"
-                  : "text-[#13150C]/75 hover:text-[#13150C]",
+                  ? "bg-[#2B4628] text-[#F7F7F4]"
+                  : "text-[#6E6D5F] hover:text-[#13150C]",
               ].join(" ")}
             >
-              <Store className="h-3.5 w-3.5" />
-              <span>Mi puesto</span>
+              Mi puesto
             </button>
           </div>
         )}

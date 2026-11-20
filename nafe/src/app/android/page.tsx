@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { Smartphone, Wifi, Battery, Signal, ArrowLeft } from "lucide-react";
 import { WelcomeHero } from "@/components/auth/WelcomeHero";
 import { NafeHomeApp } from "@/components/home/NafeHomeApp";
 
@@ -15,87 +14,79 @@ export default function AndroidEmulatorPage() {
 
   const dimensions =
     device === "pixel"
-      ? { width: 412, height: 844, label: "Android 412 × 844" }
-      : { width: 360, height: 760, label: "Compacto 360 × 760" };
+      ? { width: 412, height: 844, label: "412 × 844" }
+      : { width: 360, height: 760, label: "360 × 760" };
 
   return (
-    <div className="min-h-dvh w-full bg-[#1C1F14] px-4 py-6 text-[#DEDED8]">
+    <div className="min-h-dvh w-full bg-[#13150C] px-4 py-6 text-[#F7F7F4]">
       <div className="mx-auto flex max-w-[1160px] flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center">
-        {/* Left Emulator Controls (Outside the App UI) */}
-        <aside className="w-full max-w-[360px] space-y-5 rounded-xl border border-[#949172]/30 bg-[#25291B] p-6">
+        {/* Left Emulator Controls */}
+        <aside className="w-full max-w-[340px] space-y-4 rounded-xl bg-[#1C2014] p-5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/logo.svg"
                 alt="NAFE"
-                className="h-8 w-auto object-contain"
+                className="h-7 w-auto object-contain"
               />
-              <span className="font-serif text-xl font-medium text-[#DEDED8]">
-                Emulador Android
+              <span className="text-lg font-semibold tracking-tight text-[#F7F7F4]">
+                Android
               </span>
             </div>
             <Link
               href="/radar"
-              className="inline-flex items-center gap-1 rounded-lg border border-[#949172]/40 px-2.5 py-1.5 text-[12px] font-medium text-[#DEDED8]/85 hover:bg-white/10"
+              className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-[#F7F7F4]/85 hover:bg-white/15"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Salir</span>
+              Salir
             </Link>
           </div>
 
-          <p className="text-[13.5px] leading-relaxed text-[#DEDED8]/75">
-            Previsualiza en tiempo real la versión móvil de NAFE exactamente
-            como corre dentro del WebView de Android en Tauri v2.
-          </p>
-
-          {/* Screen Switcher */}
-          <div className="space-y-2">
-            <span className="block text-[11.5px] font-semibold uppercase tracking-wider text-[#949172]">
-              Pantalla activa
+          <div className="space-y-1.5">
+            <span className="block text-xs font-medium text-[#F7F7F4]/60">
+              Pantalla
             </span>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setScreen("radar")}
                 className={[
-                  "h-10 rounded-lg border text-[13px] font-semibold transition-colors",
+                  "h-9 rounded-lg text-xs font-semibold transition-colors",
                   screen === "radar"
-                    ? "border-[#3D562F] bg-[#3D562F] text-white"
-                    : "border-[#949172]/35 bg-black/20 text-[#DEDED8]/80 hover:bg-black/35",
+                    ? "bg-[#2B4628] text-[#F7F7F4]"
+                    : "bg-black/25 text-[#F7F7F4]/80 hover:bg-black/40",
                 ].join(" ")}
               >
-                Radar / Mi Puesto
+                Radar
               </button>
               <button
                 type="button"
                 onClick={() => setScreen("login")}
                 className={[
-                  "h-10 rounded-lg border text-[13px] font-semibold transition-colors",
+                  "h-9 rounded-lg text-xs font-semibold transition-colors",
                   screen === "login"
-                    ? "border-[#3D562F] bg-[#3D562F] text-white"
-                    : "border-[#949172]/35 bg-black/20 text-[#DEDED8]/80 hover:bg-black/35",
+                    ? "bg-[#2B4628] text-[#F7F7F4]"
+                    : "bg-black/25 text-[#F7F7F4]/80 hover:bg-black/40",
                 ].join(" ")}
               >
-                Bienvenida / Login
+                Acceso
               </button>
             </div>
           </div>
 
-          {/* Device Size Preset */}
-          <div className="space-y-2">
-            <span className="block text-[11.5px] font-semibold uppercase tracking-wider text-[#949172]">
-              Resolución Android
+          <div className="space-y-1.5">
+            <span className="block text-xs font-medium text-[#F7F7F4]/60">
+              Resolución
             </span>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setDevice("pixel")}
                 className={[
-                  "h-10 rounded-lg border text-[12.5px] font-semibold transition-colors",
+                  "h-9 rounded-lg text-xs font-semibold transition-colors",
                   device === "pixel"
-                    ? "border-[#DBF7EC]/50 bg-[#DBF7EC] text-[#13150C]"
-                    : "border-[#949172]/35 bg-black/20 text-[#DEDED8]/80 hover:bg-black/35",
+                    ? "bg-[#1F3A26] text-[#F4F7F4]"
+                    : "bg-black/25 text-[#F7F7F4]/80 hover:bg-black/40",
                 ].join(" ")}
               >
                 412 × 844
@@ -104,10 +95,10 @@ export default function AndroidEmulatorPage() {
                 type="button"
                 onClick={() => setDevice("compact")}
                 className={[
-                  "h-10 rounded-lg border text-[12.5px] font-semibold transition-colors",
+                  "h-9 rounded-lg text-xs font-semibold transition-colors",
                   device === "compact"
-                    ? "border-[#DBF7EC]/50 bg-[#DBF7EC] text-[#13150C]"
-                    : "border-[#949172]/35 bg-black/20 text-[#DEDED8]/80 hover:bg-black/35",
+                    ? "bg-[#1F3A26] text-[#F4F7F4]"
+                    : "bg-black/25 text-[#F7F7F4]/80 hover:bg-black/40",
                 ].join(" ")}
               >
                 360 × 760
@@ -115,17 +106,11 @@ export default function AndroidEmulatorPage() {
             </div>
           </div>
 
-          {/* Quick APK Build Guide */}
-          <div className="space-y-2 rounded-lg border border-[#949172]/25 bg-black/25 p-3.5 text-[12px] text-[#DEDED8]/80">
-            <div className="flex items-center gap-1.5 font-semibold text-[#DBF7EC]">
-              <Smartphone className="h-3.5 w-3.5" />
-              <span>Compilar APK Real (Tauri v2)</span>
-            </div>
-            <p className="leading-relaxed">
-              Con Rust y Android Studio instalados, ejecuta dentro de{" "}
-              <code className="text-[#DBF7EC]">nafe/</code>:
-            </p>
-            <pre className="overflow-x-auto rounded-md bg-black/50 p-2.5 font-mono text-[11px] text-[#DBF7EC]">
+          <div className="space-y-1.5 rounded-lg bg-black/30 p-3 text-xs text-[#F7F7F4]/80">
+            <span className="block font-semibold text-[#F4F7F4]">
+              Compilar APK (Tauri v2)
+            </span>
+            <pre className="overflow-x-auto rounded-md bg-black/50 p-2 font-mono text-[11px] text-[#F4F7F4]">
               {`npx tauri android init\nnpx tauri android build --apk --debug`}
             </pre>
           </div>
@@ -138,16 +123,12 @@ export default function AndroidEmulatorPage() {
               width: `${dimensions.width}px`,
               height: `${dimensions.height}px`,
             }}
-            className="relative flex flex-col overflow-hidden rounded-2xl border-[8px] border-[#0E1009] bg-[#DEDED8] shadow-[0_24px_70px_rgba(0,0,0,0.55)]"
+            className="relative flex flex-col overflow-hidden rounded-2xl bg-[#F7F7F4] shadow-[0_24px_70px_rgba(0,0,0,0.55)]"
           >
-            {/* Simulated Android Status Bar */}
-            <div className="flex h-7 shrink-0 items-center justify-between bg-[#13150C] px-4 text-[11px] font-medium text-[#DEDED8]">
+            {/* Status Bar */}
+            <div className="flex h-6 shrink-0 items-center justify-between bg-[#13150C] px-4 text-[11px] font-medium text-[#F7F7F4]">
               <span>17:45</span>
-              <div className="flex items-center gap-2">
-                <Signal className="h-3 w-3" />
-                <Wifi className="h-3 w-3" />
-                <Battery className="h-3.5 w-3.5" />
-              </div>
+              <span>5G · 100%</span>
             </div>
 
             {/* Live App Viewport */}
@@ -159,14 +140,14 @@ export default function AndroidEmulatorPage() {
               )}
             </div>
 
-            {/* Simulated Android Gesture Pill */}
-            <div className="flex h-4 shrink-0 items-center justify-center bg-[#DEDED8]">
-              <div className="h-1 w-24 rounded-sm bg-[#13150C]/25" />
+            {/* Gesture Pill */}
+            <div className="flex h-4 shrink-0 items-center justify-center bg-[#F7F7F4]">
+              <div className="h-1 w-24 rounded-sm bg-[#13150C]/20" />
             </div>
           </div>
 
-          <span className="mt-3 text-[12px] text-[#DEDED8]/60">
-            {dimensions.label} · Vista móvil Tauri v2
+          <span className="mt-2.5 text-xs text-[#F7F7F4]/60">
+            {dimensions.label}
           </span>
         </div>
       </div>

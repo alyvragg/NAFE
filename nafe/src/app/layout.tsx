@@ -34,7 +34,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#DEDED8",
+  themeColor: "#F7F7F4",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -43,7 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="es-MX"
       className={`${newsreader.variable} ${plusJakartaSans.variable} h-full antialiased`}
     >
-      <body className="min-h-dvh bg-[#DEDED8] text-[#13150C] font-sans selection:bg-[#DBF7EC] selection:text-[#13150C]">
+      <body className="min-h-dvh bg-[#F7F7F4] text-[#13150C] font-sans selection:bg-[#1F3A26] selection:text-[#F4F7F4]">
         {children}
       </body>
     </html>

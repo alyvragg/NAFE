@@ -3,37 +3,19 @@
 import React, { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Search,
-  X,
-  List,
-  MapPin,
-  Bookmark,
-  Clock,
-  ChevronRight,
-  LayoutGrid,
-  UtensilsCrossed,
-  Sprout,
-  Mountain,
-  Wheat,
-  Hammer,
-  Scissors,
-  Wrench,
-  Sparkles,
-  Store,
-} from "lucide-react";
+import { Search, X, Bookmark, Star } from "lucide-react";
 import {
   ProducerPost,
   ProducerCategory,
   PRODUCER_CATEGORIES,
-} from "@/data/mockProducers";
+} from "@/lib/businesses";
 import { GeoCoordinates } from "@/lib/nativeBridge";
 
 const OsmRadarMap = dynamic(() => import("./OsmRadarMap"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[460px] w-full items-center justify-center rounded-xl border border-[#949172]/40 bg-white/50 text-[14px] font-medium text-[#13150C]/70">
-      Cargando mapa OpenStreetMap…
+    <div className="flex h-[460px] w-full items-center justify-center rounded-xl bg-[#FFFFFF] text-sm font-medium text-[#6E6D5F] shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
+      Cargando mapa…
     </div>
   ),
 });
@@ -49,51 +31,27 @@ interface BuyerRadarViewProps {
   onToggleSave: (id: string) => void;
   onSelectProducer: (producer: ProducerPost) => void;
   onOpenSellerProfile: (producerName: string) => void;
+  onOpenChatWithBusiness: (producer: ProducerPost) => void;
   onlySaved?: boolean;
   isDesktop?: boolean;
 }
 
-const QUICK_RECOMMENDATION_PROMPTS: Array<{
-  label: string;
-  query: string;
-}> = [
-  { label: "Algo fresco para comer", query: "queso" },
-  { label: "Plantas para casa", query: "árboles" },
-  { label: "Cantera o piedra", query: "cantera" },
-  { label: "Artesanía local", query: "barro" },
-  { label: "Pan de leña y miel", query: "pan" },
-  { label: "Hortalizas y huevo", query: "hortalizas" },
-  { label: "Bordado y lana", query: "bordado" },
-  { label: "Oficios de barrio", query: "carpintería" },
-];
+const SHORT_CATEGORY_LABELS: Record<ProducerCategory, string> = {
+  Todo: "Todo",
+  "Comida y Gastronomía": "Comida",
+  "Plantas y Viveros": "Plantas",
+  "Minería y Cantera": "Minería",
+  "Campo y Huerta": "Campo",
+  "Artesanía y Talleres": "Artesanía",
+  "Textiles y Moda Local": "Textiles",
+  "Servicios y Oficios": "Servicios",
+};
 
-export function getSectionIcon(
-  category: ProducerCategory
-): React.ComponentType<{ className?: string; strokeWidth?: number }> {
-  switch (category) {
-    case "Todo":
-      return LayoutGrid;
-    case "Comida y Gastronomía":
-      return UtensilsCrossed;
-    case "Plantas y Viveros":
-      return Sprout;
-    case "Minería y Cantera":
-      return Mountain;
-    case "Campo y Huerta":
-      return Wheat;
-    case "Artesanía y Talleres":
-      return Hammer;
-    case "Textiles y Moda Local":
-      return Scissors;
-    case "Servicios y Oficios":
-      return Wrench;
-    default:
-      return LayoutGrid;
-  }
+export function getShortCategoryLabel(category: ProducerCategory): string {
+  return SHORT_CATEGORY_LABELS[category] || category;
 }
 
 export function BuyerRadarView({
-  userName,
   userCoords,
   cityLabel,
   searchRadiusKm,
@@ -103,6 +61,7 @@ export function BuyerRadarView({
   onToggleSave,
   onSelectProducer,
   onOpenSellerProfile,
+  onOpenChatWithBusiness,
   onlySaved = false,
   isDesktop = false,
 }: BuyerRadarViewProps) {
@@ -110,30 +69,7 @@ export function BuyerRadarView({
   const [activeCategory, setActiveCategory] =
     useState<ProducerCategory>("Todo");
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
-
-  const firstName = userName.trim().split(/\s+/)[0] || "Alex";
-
-  const categoryCounts = useMemo(() => {
-    const counts: Record<ProducerCategory, number> = {
-      Todo: 0,
-      "Comida y Gastronomía": 0,
-      "Plantas y Viveros": 0,
-      "Minería y Cantera": 0,
-      "Campo y Huerta": 0,
-      "Artesanía y Talleres": 0,
-      "Textiles y Moda Local": 0,
-      "Servicios y Oficios": 0,
-    };
-
-    for (const item of producers) {
-      if (onlySaved && !savedIds.includes(item.id)) continue;
-      counts.Todo += 1;
-      if (counts[item.category] !== undefined) {
-        counts[item.category] += 1;
-      }
-    }
-    return counts;
-  }, [producers, onlySaved, savedIds]);
+  const [sortBy, setSortBy] = useState<"distance" | "rating">("distance");
 
   const filteredProducers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -163,188 +99,152 @@ export function BuyerRadarView({
     });
 
     return [...matched].sort((a, b) => {
-      if (q) {
-        const aConfirmed = a.freshnessStatus === "confirmed" ? 1 : 0;
-        const bConfirmed = b.freshnessStatus === "confirmed" ? 1 : 0;
-        if (aConfirmed !== bConfirmed) return bConfirmed - aConfirmed;
+      if (sortBy === "rating") {
+        if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
+        return b.reviewsCount - a.reviewsCount;
       }
       return a.distanceKm - b.distanceKm;
     });
-  }, [producers, onlySaved, savedIds, activeCategory, searchQuery]);
+  }, [producers, onlySaved, savedIds, activeCategory, searchQuery, sortBy]);
 
   return (
-    <div className="space-y-4 pb-6">
-      {/* 1. Bloque Recomendador Conversacional + Buscador 100% ancho en una sola línea */}
+    <div className="space-y-3.5 pb-6">
+      {/* 1. Buscador Directo y Limpio */}
       {!onlySaved && (
-        <section className="rounded-xl border border-[#949172]/40 bg-white/70 p-4 shadow-2xs">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-serif text-[22px] sm:text-[24px] font-medium leading-tight text-[#13150C]/80">
-              ¿Qué estás buscando hoy,{" "}
-              <span className="italic">{firstName}</span>?
-            </h2>
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[#DBF7EC] px-2.5 py-1 text-[11px] font-semibold text-[#3D562F]">
-              <Sparkles className="h-3 w-3" />
-              Cerca de ti
-            </span>
-          </div>
-
-          <div className="relative mt-3 w-full">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#949172]" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Escribe qué necesitas hoy (ej. queso fresco, árboles, cantera, barro)…"
-              aria-label="Buscar qué necesitas hoy"
-              className="h-[48px] w-full rounded-lg border border-[#949172]/45 bg-white pl-10 pr-9 text-[14.5px] text-[#13150C] placeholder:text-[#949172] outline-none transition-all focus:border-[#3D562F] focus:ring-4 focus:ring-[#3D562F]/12"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery("");
-                  setActiveCategory("Todo");
-                }}
-                aria-label="Limpiar búsqueda"
-                className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-[#949172] hover:bg-[#949172]/15 hover:text-[#13150C]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Chips de intención rápida en una sola fila deslizable */}
-          <div className="nafe-scroll mt-2.5 flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5">
-            {QUICK_RECOMMENDATION_PROMPTS.map((item) => {
-              const isSelected =
-                searchQuery.toLowerCase() === item.query.toLowerCase();
-              return (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={() => {
-                    if (isSelected) {
-                      setSearchQuery("");
-                      setActiveCategory("Todo");
-                    } else {
-                      setSearchQuery(item.query);
-                      setActiveCategory("Todo");
-                    }
-                  }}
-                  className={[
-                    "shrink-0 rounded-lg border px-2.5 py-1 text-[12px] font-medium transition-colors",
-                    isSelected
-                      ? "border-[#3D562F] bg-[#3D562F] text-[#DEDED8]"
-                      : "border-[#949172]/35 bg-[#DEDED8]/55 text-[#13150C]/80 hover:border-[#3D562F]/50 hover:bg-white",
-                  ].join(" ")}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
-        </section>
+        <div className="relative w-full">
+          <Search
+            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6E6D5F]"
+            strokeWidth={1.6}
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar"
+            aria-label="Buscar"
+            className="h-11 w-full rounded-lg bg-[#FFFFFF] pl-10 pr-9 text-sm text-[#13150C] placeholder:text-[#6E6D5F] shadow-[0_2px_10px_rgba(19,21,12,0.04)] outline-none"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                setActiveCategory("Todo");
+              }}
+              aria-label="Limpiar búsqueda"
+              className="absolute right-2 top-1/2 -translate-y-1/2 bg-transparent p-1.5 text-[#13150C]/55 transition-colors hover:text-[#13150C]"
+            >
+              <X className="h-4 w-4" strokeWidth={1.6} />
+            </button>
+          )}
+        </div>
       )}
 
-      {/* 2. 8 Secciones en UNA SOLA FILA deslizable horizontalmente */}
+      {/* 2. Chips de Categorías (Solo texto limpio, cero íconos) */}
       <div
-        className="nafe-scroll -mx-1 flex flex-nowrap items-center gap-2 overflow-x-auto px-1 pb-1"
+        className="nafe-scroll -mx-1 flex flex-nowrap items-center gap-1.5 overflow-x-auto px-1 pb-0.5"
         role="tablist"
-        aria-label="Secciones de economía local"
+        aria-label="Categorías"
       >
         {PRODUCER_CATEGORIES.map((category) => {
           const isActive = activeCategory === category;
-          const SectionIcon = getSectionIcon(category);
-          const count = categoryCounts[category] ?? 0;
 
           return (
-            <motion.button
+            <button
               key={category}
               type="button"
               role="tab"
               aria-selected={isActive}
-              whileTap={{ scale: 0.97 }}
               onClick={() => setActiveCategory(category)}
               className={[
-                "inline-flex shrink-0 items-center gap-2 rounded-lg border px-3.5 py-2 text-[13px] font-semibold transition-all duration-200",
+                "shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
                 isActive
-                  ? "border-[#3D562F] bg-[#3D562F] text-[#DEDED8] shadow-[0_4px_12px_rgba(61,86,47,0.18)]"
-                  : "border-[#949172]/40 bg-white/60 text-[#13150C] hover:border-[#3D562F]/50 hover:bg-white/85",
+                  ? "bg-[#2B4628] text-[#F7F7F4]"
+                  : "bg-[#EFEFEA] text-[#13150C] hover:bg-[#FFFFFF]",
               ].join(" ")}
             >
-              <SectionIcon className="h-4 w-4 shrink-0" />
-              <span>{category}</span>
-              <span
-                className={[
-                  "rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
-                  isActive
-                    ? "bg-black/20 text-[#DBF7EC]"
-                    : "bg-[#949172]/20 text-[#13150C]/75",
-                ].join(" ")}
-              >
-                {count}
-              </span>
-            </motion.button>
+              {SHORT_CATEGORY_LABELS[category]}
+            </button>
           );
         })}
       </div>
 
-      {/* 3. Contador + Selector de Vista: Lista (activo por defecto) | Mapa */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-        <span className="text-[12.5px] text-[#13150C]/75">
-          <strong className="font-semibold text-[#13150C]">
-            {filteredProducers.length}
-          </strong>{" "}
-          {filteredProducers.length === 1
-            ? "resultado cercano"
-            : "resultados cercanos"}{" "}
-          · Radio {searchRadiusKm} km
-        </span>
+      {/* 3. Ordenamiento y Selector Lista / Mapa (Cero íconos decorativos) */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#EFEFEA] p-1">
+          <button
+            type="button"
+            onClick={() => setSortBy("distance")}
+            className={[
+              "h-full rounded-md px-2.5 text-xs font-semibold transition-colors",
+              sortBy === "distance"
+                ? "bg-[#FFFFFF] text-[#13150C]"
+                : "text-[#6E6D5F] hover:text-[#13150C]",
+            ].join(" ")}
+          >
+            Cercanía ({filteredProducers.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSortBy("rating")}
+            className={[
+              "inline-flex h-full items-center gap-1 rounded-md px-2.5 text-xs font-semibold transition-colors",
+              sortBy === "rating"
+                ? "bg-[#FFFFFF] text-[#13150C]"
+                : "text-[#6E6D5F] hover:text-[#13150C]",
+            ].join(" ")}
+          >
+            <Star
+              className="h-3.5 w-3.5 text-[#C88A1E]"
+              fill="currentColor"
+              strokeWidth={1.6}
+            />
+            <span>Calificación</span>
+          </button>
+        </div>
 
         <div
-          className="inline-flex h-10 shrink-0 items-center gap-1 rounded-lg border border-[#949172]/35 bg-[#949172]/15 p-1"
+          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-[#EFEFEA] p-1"
           role="group"
-          aria-label="Cambiar entre Lista y Mapa"
+          aria-label="Vista"
         >
           <button
             type="button"
             onClick={() => setViewMode("list")}
             className={[
-              "flex h-full items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-semibold transition-all",
+              "h-full rounded-md px-3 text-xs font-semibold transition-colors",
               viewMode === "list"
-                ? "bg-[#3D562F] text-[#DEDED8] shadow-2xs"
-                : "text-[#13150C]/75 hover:text-[#13150C]",
+                ? "bg-[#2B4628] text-[#F7F7F4]"
+                : "text-[#6E6D5F] hover:text-[#13150C]",
             ].join(" ")}
           >
-            <List className="h-3.5 w-3.5" />
-            <span>Lista</span>
+            Lista
           </button>
 
           <button
             type="button"
             onClick={() => setViewMode("map")}
             className={[
-              "flex h-full items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-semibold transition-all",
+              "h-full rounded-md px-3 text-xs font-semibold transition-colors",
               viewMode === "map"
-                ? "bg-[#3D562F] text-[#DEDED8] shadow-2xs"
-                : "text-[#13150C]/75 hover:text-[#13150C]",
+                ? "bg-[#2B4628] text-[#F7F7F4]"
+                : "text-[#6E6D5F] hover:text-[#13150C]",
             ].join(" ")}
           >
-            <MapPin className="h-3.5 w-3.5" />
-            <span>Mapa</span>
+            Mapa
           </button>
         </div>
       </div>
 
-      {/* 4. Vista Lista (por defecto) vs Mapa OpenStreetMap */}
+      {/* 4. Vista Lista o Mapa */}
       <AnimatePresence mode="wait">
         {viewMode === "map" ? (
           <motion.section
             key="osm-real-map"
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.24 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
           >
             <OsmRadarMap
               producers={filteredProducers}
@@ -356,34 +256,30 @@ export function BuyerRadarView({
               onToggleSave={onToggleSave}
               onSelectProducer={onSelectProducer}
               onOpenSellerProfile={onOpenSellerProfile}
+              onOpenChatWithBusiness={onOpenChatWithBusiness}
             />
           </motion.section>
         ) : (
           <motion.div
             key="producers-list-grid"
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.24 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
             className={
               isDesktop
-                ? "grid grid-cols-1 gap-4 md:grid-cols-2"
-                : "space-y-3.5"
+                ? "grid grid-cols-1 gap-3.5 md:grid-cols-2"
+                : "space-y-3"
             }
           >
             {filteredProducers.length === 0 ? (
-              <div className="col-span-full rounded-xl border border-[#949172]/35 bg-white/55 p-8 text-center">
-                <p className="font-serif text-[22px] text-[#13150C]/80">
+              <div className="col-span-full rounded-xl bg-[#FFFFFF] p-6 text-center shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
+                <p className="text-[15px] font-medium text-[#13150C]">
                   {onlySaved
-                    ? "Aún no tienes puestos guardados"
-                    : "No encontramos resultados dentro de este radio"}
+                    ? "Sin negocios guardados"
+                    : "Sin resultados en este radio"}
                 </p>
-                <p className="mt-1.5 text-[13.5px] text-[#13150C]/65">
-                  {onlySaved
-                    ? "Marca cualquier tarjeta del radar para guardarla en tu dispositivo."
-                    : "Prueba seleccionando 'Todo' o ampliando el radio de búsqueda."}
-                </p>
-                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
                   {(activeCategory !== "Todo" || searchQuery) && (
                     <button
                       type="button"
@@ -391,158 +287,165 @@ export function BuyerRadarView({
                         setActiveCategory("Todo");
                         setSearchQuery("");
                       }}
-                      className="inline-flex min-h-[42px] items-center justify-center rounded-lg bg-[#3D562F] px-4 text-[13px] font-semibold text-white"
+                      className="inline-flex h-9 items-center justify-center rounded-lg bg-[#2B4628] px-3.5 text-sm font-medium text-[#F7F7F4]"
                     >
-                      Ver todos los productores
+                      Ver todo
                     </button>
                   )}
                   {searchRadiusKm < 50 && !onlySaved && (
                     <button
                       type="button"
                       onClick={() => onChangeRadius(50)}
-                      className="inline-flex min-h-[42px] items-center justify-center rounded-lg border border-[#3D562F] bg-white px-4 text-[13px] font-semibold text-[#3D562F]"
+                      className="inline-flex h-9 items-center justify-center rounded-lg bg-[#EFEFEA] px-3.5 text-sm font-medium text-[#13150C]"
                     >
-                      Ampliar radio a 50 km
+                      Ampliar a 50 km
                     </button>
                   )}
                 </div>
               </div>
             ) : (
-              filteredProducers.map((producer, index) => {
+              filteredProducers.map((producer) => {
                 const isConfirmed = producer.freshnessStatus === "confirmed";
                 const isSaved = savedIds.includes(producer.id);
-                const SectionIcon = getSectionIcon(producer.category);
                 const coverPhoto =
                   producer.photos && producer.photos.length > 0
                     ? producer.photos[0]
                     : null;
 
                 return (
-                  <motion.article
+                  <article
                     key={producer.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                      duration: 0.24,
-                      delay: Math.min(index * 0.03, 0.18),
-                    }}
-                    whileTap={{ scale: 0.985 }}
                     onClick={() => onSelectProducer(producer)}
-                    className="group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl border border-[#949172]/40 bg-white/80 shadow-[0_6px_20px_rgba(19,21,12,0.04)] transition-all duration-200 hover:border-[#3D562F]/60 hover:bg-white hover:shadow-[0_12px_28px_rgba(61,86,47,0.1)]"
+                    className="group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl bg-[#FFFFFF] shadow-[0_2px_10px_rgba(19,21,12,0.04)] transition-shadow duration-200 hover:shadow-[0_6px_20px_rgba(19,21,12,0.07)]"
                   >
                     <div>
-                      {coverPhoto && (
-                        <div className="relative h-40 w-full overflow-hidden bg-[#DEDED8]">
+                      {/* Si tiene foto real se muestra; si no, superficie limpia tonal #EFEFEA sin ícono */}
+                      {coverPhoto ? (
+                        <div className="relative h-36 w-full overflow-hidden bg-[#EFEFEA]">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={coverPhoto}
                             alt={producer.productTitle}
                             loading="lazy"
-                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            className="h-full w-full object-cover"
                           />
-                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#13150C]/60 via-transparent to-[#13150C]/20" />
-
-                          <div className="absolute inset-x-3 top-2.5 flex items-start justify-between gap-2">
-                            <span
-                              className={[
-                                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] font-semibold text-[#13150C] shadow-xs",
-                                isConfirmed ? "bg-[#DBF7EC]" : "bg-[#F7DBDB]",
-                              ].join(" ")}
-                            >
-                              <span
-                                className={[
-                                  "h-2 w-2 rounded-xs",
-                                  isConfirmed
-                                    ? "bg-[#3D562F]"
-                                    : "bg-[#9E4242]",
-                                ].join(" ")}
-                              />
-                              {producer.freshnessLabel}
-                            </span>
-
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onToggleSave(producer.id);
-                              }}
-                              aria-label={
-                                isSaved
-                                  ? "Quitar de guardados"
-                                  : "Guardar productor"
-                              }
-                              className={[
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors",
-                                isSaved
-                                  ? "border-[#3D562F] bg-[#DBF7EC] text-[#3D562F]"
-                                  : "border-white/40 bg-[#13150C]/55 text-white hover:bg-[#13150C]/80",
-                              ].join(" ")}
-                            >
-                              <Bookmark
-                                className="h-4 w-4"
-                                fill={isSaved ? "currentColor" : "none"}
-                              />
-                            </button>
-                          </div>
-
-                          <div className="absolute inset-x-3 bottom-2.5 flex items-center justify-between gap-2">
-                            <span className="inline-flex items-center gap-1 rounded-md bg-[#DEDED8]/95 px-2.5 py-0.5 text-[11px] font-semibold text-[#13150C]">
-                              <SectionIcon className="h-3 w-3 text-[#3D562F]" />
-                              <span>{producer.category}</span>
-                            </span>
-
-                            <span className="rounded-md bg-[#3D562F] px-2.5 py-0.5 text-[11.5px] font-semibold text-[#DEDED8]">
-                              A {producer.distanceKm} km
-                            </span>
-                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex h-11 w-full items-center justify-between bg-[#EFEFEA] px-4">
+                          <span className="text-xs font-medium text-[#6E6D5F]">
+                            {SHORT_CATEGORY_LABELS[producer.category]}
+                          </span>
+                          <span className="text-xs font-medium text-[#6E6D5F]">
+                            {producer.distanceKm} km
+                          </span>
                         </div>
                       )}
 
-                      <div className="p-4 pb-2">
-                        <h3 className="font-serif text-[21px] font-medium leading-[1.2] text-[#13150C]/80 group-hover:text-[#13150C]">
+                      <div className="p-4 pb-2.5">
+                        {/* Fila superior: Estado + Calificación/Entregas + Favorito sin fondo */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={[
+                                "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
+                                isConfirmed
+                                  ? "bg-[#1F3A26] text-[#F4F7F4]"
+                                  : "bg-[#F2DCDC] text-[#7A2727]",
+                              ].join(" ")}
+                            >
+                              {producer.freshnessLabel}
+                            </span>
+
+                            <span className="inline-flex items-center gap-1 text-xs text-[#6E6D5F]">
+                              <Star
+                                className="h-3.5 w-3.5 text-[#C88A1E]"
+                                fill="currentColor"
+                                strokeWidth={1.6}
+                              />
+                              <span>
+                                {producer.avgRating.toFixed(1)} (
+                                {producer.reviewsCount})
+                                {producer.completedSalesCount > 0
+                                  ? ` · ${producer.completedSalesCount} ${
+                                      producer.completedSalesCount === 1
+                                        ? "entrega"
+                                        : "entregas"
+                                    }`
+                                  : ""}
+                              </span>
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleSave(producer.id);
+                            }}
+                            aria-label={
+                              isSaved
+                                ? "Quitar de guardados"
+                                : "Guardar negocio"
+                            }
+                            className={[
+                              "bg-transparent p-1.5 transition-colors",
+                              isSaved
+                                ? "text-[#1F3A26]"
+                                : "text-[#13150C]/45 hover:text-[#13150C]",
+                            ].join(" ")}
+                          >
+                            <Bookmark
+                              className="h-4 w-4"
+                              strokeWidth={1.6}
+                              fill={isSaved ? "currentColor" : "none"}
+                            />
+                          </button>
+                        </div>
+
+                        {/* Título de tarjeta en Plus Jakarta Sans 15px */}
+                        <h3 className="mt-2 text-[15px] font-medium leading-snug text-[#13150C]">
                           {producer.productTitle}
                         </h3>
 
-                        {/* Clickable Producer Profile Name */}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             onOpenSellerProfile(producer.producerName);
                           }}
-                          className="mt-1 inline-flex items-center gap-1 text-[13px] font-semibold text-[#3D562F] hover:underline underline-offset-4"
+                          className="mt-1 inline-block text-xs font-medium text-[#2B4628] hover:underline underline-offset-4"
                         >
-                          <Store className="h-3.5 w-3.5" />
-                          <span>{producer.producerName}</span>
+                          {producer.producerName}
                         </button>
 
-                        <div className="mt-3 space-y-1.5 rounded-lg bg-[#DEDED8]/55 px-3.5 py-2.5 text-[12.5px] text-[#13150C]/80">
-                          <div className="flex items-center gap-2 font-medium">
-                            <MapPin className="h-3.5 w-3.5 shrink-0 text-[#3D562F]" />
-                            <span className="truncate">
-                              A {producer.distanceKm} km ·{" "}
-                              {producer.meetingPoint}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 text-[#13150C]/65">
-                            <Clock className="h-3.5 w-3.5 shrink-0 text-[#949172]" />
-                            <span>{producer.scheduleToday}</span>
-                          </div>
+                        {/* Metadatos limpios sin íconos repetitivos */}
+                        <div className="mt-2.5 space-y-0.5 rounded-lg bg-[#EFEFEA] px-3 py-2 text-xs text-[#6E6D5F]">
+                          <p className="truncate font-medium text-[#13150C]">
+                            {producer.distanceKm} km · {producer.meetingPoint}
+                          </p>
+                          <p className="truncate">{producer.scheduleToday}</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2 px-4 pt-1 pb-4">
-                      <span className="inline-flex items-center rounded-md border border-[#949172]/45 bg-[#949172]/15 px-2.5 py-1 text-[11.5px] font-semibold text-[#13150C]/80">
-                        {producer.savingsTag}
-                      </span>
+                    {/* Acciones inferiores (Solo texto, sin íconos) */}
+                    <div className="flex items-center justify-between gap-2 px-4 pt-1 pb-3.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenChatWithBusiness(producer);
+                        }}
+                        className="inline-flex h-8 items-center rounded-lg bg-[#EFEFEA] px-3 text-xs font-semibold text-[#13150C] transition-colors hover:bg-[#2B4628] hover:text-[#F7F7F4]"
+                      >
+                        Enviar mensaje
+                      </button>
 
-                      <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#3D562F] transition-transform group-hover:translate-x-0.5">
-                        <span>Ver fotos y WhatsApp</span>
-                        <ChevronRight className="h-4 w-4" />
+                      <span className="text-xs font-semibold text-[#2B4628]">
+                        Ver detalle
                       </span>
                     </div>
-                  </motion.article>
+                  </article>
                 );
               })
             )}

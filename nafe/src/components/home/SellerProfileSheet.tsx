@@ -1,19 +1,16 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { X, Star } from "lucide-react";
+import { ProducerPost } from "@/lib/businesses";
 import {
-  X,
-  MapPin,
-  Clock,
-  ShieldCheck,
-  MessageCircle,
-  Store,
-  ChevronRight,
-  Sparkles,
-} from "lucide-react";
-import { ProducerPost } from "@/data/mockProducers";
+  PublicBusinessSale,
+  getPublicBusinessSales,
+  formatRelativeSaleDate,
+} from "@/lib/sales";
 import { openExternalUrl } from "@/lib/nativeBridge";
+import { getShortCategoryLabel } from "./BuyerRadarView";
 
 interface SellerProfileSheetProps {
   producerName: string | null;
@@ -28,11 +25,35 @@ export function SellerProfileSheet({
   onClose,
   onSelectPost,
 }: SellerProfileSheetProps) {
+  const [publicSales, setPublicSales] = useState<PublicBusinessSale[]>([]);
+
   const sellerPosts = producerName
     ? allProducers.filter((p) => p.producerName === producerName)
     : [];
 
   const primaryPost = sellerPosts[0] ?? null;
+
+  useEffect(() => {
+    if (!primaryPost) {
+      setPublicSales([]);
+      return;
+    }
+    getPublicBusinessSales(primaryPost.id, 15).then(setPublicSales);
+  }, [primaryPost]);
+
+  const totalCompletedSales = sellerPosts.reduce(
+    (acc, post) => acc + (post.completedSalesCount || 0),
+    0
+  );
+  const totalVerifiedSales = sellerPosts.reduce(
+    (acc, post) => acc + (post.verifiedSalesCount || 0),
+    0
+  );
+  const effectiveSalesCount = Math.max(totalCompletedSales, publicSales.length);
+  const effectiveVerifiedCount = Math.max(
+    totalVerifiedSales,
+    publicSales.filter((s) => s.buyerConfirmed).length
+  );
 
   const handleDirectWhatsApp = () => {
     if (!primaryPost) return;
@@ -51,101 +72,88 @@ export function SellerProfileSheet({
           aria-modal="true"
           aria-labelledby="seller-profile-title"
         >
-          {/* Scrim */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.22 }}
+            transition={{ duration: 0.2 }}
             onClick={onClose}
             className="fixed inset-0 bg-[#13150C]/50 backdrop-blur-xs"
           />
 
-          {/* Seller Profile Drawer */}
           <motion.div
-            initial={{ y: "100%", opacity: 0.85 }}
+            initial={{ y: "100%", opacity: 0.9 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: "100%", opacity: 0 }}
-            transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
-            className="relative z-10 flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-xl border-t border-white/40 bg-[#DEDED8] shadow-[0_-18px_50px_rgba(19,21,12,0.28)] sm:rounded-xl"
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="relative z-10 flex max-h-[90dvh] w-full max-w-[500px] flex-col overflow-hidden rounded-t-xl bg-[#F7F7F4] px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-18px_50px_rgba(19,21,12,0.25)] sm:rounded-xl"
           >
-            {/* Cover Banner */}
-            <div className="relative h-36 w-full shrink-0 bg-[#3D562F]">
-              {primaryPost.photos?.[0] && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={primaryPost.photos[0]}
-                  alt={primaryPost.producerName}
-                  className="h-full w-full object-cover opacity-55"
-                />
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-[#13150C]/85 via-[#13150C]/35 to-transparent" />
+            {/* Header Limpio */}
+            <div className="flex items-start justify-between gap-3 pb-3">
+              <div className="min-w-0">
+                <span className="inline-block rounded-md bg-[#1F3A26] px-2 py-0.5 text-xs font-medium text-[#F4F7F4]">
+                  Verificado
+                </span>
+                <h2
+                  id="seller-profile-title"
+                  className="mt-1.5 truncate text-lg font-semibold tracking-tight text-[#13150C]"
+                >
+                  {primaryPost.producerName}
+                </h2>
+              </div>
 
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="Cerrar perfil del vendedor"
-                className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-[#13150C]/65 text-white transition-colors hover:bg-[#13150C]"
+                aria-label="Cerrar perfil"
+                className="bg-transparent p-1.5 text-[#13150C]/55 transition-colors hover:text-[#13150C]"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" strokeWidth={1.6} />
               </button>
-
-              <div className="absolute inset-x-5 bottom-4 flex items-end gap-3.5">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border-2 border-[#DEDED8] bg-[#3D562F] text-[#DBF7EC] shadow-md">
-                  <Store className="h-6 w-6" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <span className="inline-flex items-center gap-1 rounded-md bg-[#DBF7EC] px-2 py-0.5 text-[11px] font-semibold text-[#3D562F]">
-                    <ShieldCheck className="h-3 w-3" />
-                    Productor local verificado
-                  </span>
-                  <h2
-                    id="seller-profile-title"
-                    className="mt-1 truncate font-serif text-[23px] font-medium leading-tight text-[#DEDED8]/95"
-                  >
-                    {primaryPost.producerName}
-                  </h2>
-                </div>
-              </div>
             </div>
 
             {/* Body */}
-            <div className="nafe-scroll flex-1 space-y-4 overflow-y-auto px-5 py-4">
-              {/* Bio & Trust Info */}
-              <div className="rounded-xl border border-[#949172]/40 bg-white/80 p-4 space-y-2.5">
-                <div className="flex items-center justify-between text-[12px]">
-                  <span className="font-semibold text-[#3D562F]">
-                    {primaryPost.category}
+            <div className="nafe-scroll flex-1 space-y-3.5 overflow-y-auto py-1">
+              <div className="space-y-2.5 rounded-xl bg-[#FFFFFF] p-4 shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-medium text-[#2B4628]">
+                    {getShortCategoryLabel(primaryPost.category)}
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-md bg-[#949172]/15 px-2 py-0.5 font-semibold text-[#13150C]/80">
-                    <Sparkles className="h-3 w-3 text-[#3D562F]" />
-                    {primaryPost.savingsTag}
-                  </span>
+                  <div className="flex items-center gap-2 text-[#6E6D5F]">
+                    <span className="inline-flex items-center gap-1">
+                      <Star
+                        className="h-3.5 w-3.5 text-[#C88A1E]"
+                        fill="currentColor"
+                        strokeWidth={1.6}
+                      />
+                      {primaryPost.avgRating.toFixed(1)} (
+                      {primaryPost.reviewsCount})
+                    </span>
+
+                    {effectiveSalesCount > 0 && (
+                      <span>
+                        · {effectiveSalesCount}{" "}
+                        {effectiveSalesCount === 1 ? "entrega" : "entregas"}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <p className="text-[14px] leading-relaxed text-[#13150C]/80">
+                <p className="text-sm leading-relaxed text-[#6E6D5F]">
                   {primaryPost.story}
                 </p>
 
-                <div className="space-y-1.5 border-t border-[#949172]/25 pt-2.5 text-[12.5px] text-[#13150C]/80">
-                  <div className="flex items-center gap-2 font-medium">
-                    <MapPin className="h-3.5 w-3.5 shrink-0 text-[#3D562F]" />
-                    <span>
-                      Punto habitual: {primaryPost.meetingPoint} (a{" "}
-                      {primaryPost.distanceKm} km)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[#13150C]/65">
-                    <Clock className="h-3.5 w-3.5 shrink-0 text-[#949172]" />
-                    <span>{primaryPost.scheduleToday}</span>
-                  </div>
+                <div className="space-y-0.5 rounded-lg bg-[#EFEFEA] px-3 py-2 text-xs text-[#6E6D5F]">
+                  <p className="font-medium text-[#13150C]">
+                    {primaryPost.meetingPoint} ({primaryPost.distanceKm} km)
+                  </p>
+                  <p>{primaryPost.scheduleToday}</p>
                 </div>
               </div>
 
-              {/* Active Listings by this Seller */}
-              <div className="space-y-2.5">
-                <h3 className="font-serif text-[19px] font-medium text-[#13150C]/80">
-                  Disponible hoy en este puesto ({sellerPosts.length})
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-[#13150C]">
+                  Publicaciones ({sellerPosts.length})
                 </h3>
 
                 <div className="space-y-2">
@@ -157,47 +165,87 @@ export function SellerProfileSheet({
                         onClose();
                         onSelectPost(post);
                       }}
-                      className="flex w-full items-center gap-3 rounded-xl border border-[#949172]/35 bg-white/80 p-3 text-left transition-colors hover:border-[#3D562F] hover:bg-white"
+                      className="flex w-full items-center justify-between gap-3 rounded-xl bg-[#FFFFFF] p-3.5 text-left shadow-[0_2px_10px_rgba(19,21,12,0.04)] transition-colors hover:bg-[#EFEFEA]"
                     >
-                      {post.photos?.[0] && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={post.photos[0]}
-                          alt={post.productTitle}
-                          className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                        />
-                      )}
                       <div className="min-w-0 flex-1">
-                        <span
-                          className={[
-                            "inline-block rounded-md px-2 py-0.5 text-[10.5px] font-semibold text-[#13150C]",
-                            post.freshnessStatus === "confirmed"
-                              ? "bg-[#DBF7EC]"
-                              : "bg-[#F7DBDB]",
-                          ].join(" ")}
-                        >
-                          {post.freshnessLabel}
-                        </span>
-                        <p className="mt-1 truncate text-[14px] font-semibold text-[#13150C]">
+                        <p className="truncate text-[15px] font-medium text-[#13150C]">
                           {post.productTitle}
                         </p>
                       </div>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-[#3D562F]" />
+                      <span
+                        className={[
+                          "shrink-0 rounded-md px-2 py-0.5 text-xs font-medium",
+                          post.freshnessStatus === "confirmed"
+                            ? "bg-[#1F3A26] text-[#F4F7F4]"
+                            : "bg-[#F2DCDC] text-[#7A2727]",
+                        ].join(" ")}
+                      >
+                        {post.freshnessLabel}
+                      </span>
                     </button>
                   ))}
                 </div>
               </div>
+
+              {/* Historial Público de Ventas */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-[#13150C]">
+                    Historial de ventas ({effectiveSalesCount})
+                  </h3>
+
+                  {effectiveVerifiedCount > 0 && (
+                    <span className="rounded-md bg-[#1F3A26] px-2 py-0.5 text-xs font-medium text-[#F4F7F4]">
+                      {effectiveVerifiedCount} confirmadas
+                    </span>
+                  )}
+                </div>
+
+                {publicSales.length === 0 ? (
+                  <div className="rounded-xl bg-[#FFFFFF] p-4 text-center text-xs text-[#6E6D5F] shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
+                    Aún sin ventas registradas
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {publicSales.map((sale) => (
+                      <div
+                        key={sale.id}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-[#FFFFFF] p-3.5 shadow-[0_2px_10px_rgba(19,21,12,0.04)]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[15px] font-medium text-[#13150C]">
+                            {sale.itemSummary}
+                            {sale.quantity > 1 ? ` (×${sale.quantity})` : ""}
+                          </p>
+                          <span className="text-xs text-[#6E6D5F]">
+                            {formatRelativeSaleDate(sale.createdAt)}
+                          </span>
+                        </div>
+
+                        <span
+                          className={[
+                            "shrink-0 rounded-md px-2 py-0.5 text-xs font-medium",
+                            sale.buyerConfirmed
+                              ? "bg-[#1F3A26] text-[#F4F7F4]"
+                              : "bg-[#EFEFEA] text-[#13150C]",
+                          ].join(" ")}
+                        >
+                          {sale.buyerConfirmed ? "Confirmada" : "Registrada"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Footer WhatsApp Action */}
-            <div className="shrink-0 border-t border-[#949172]/25 bg-[#DEDED8] px-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+            <div className="pt-3.5">
               <button
                 type="button"
                 onClick={handleDirectWhatsApp}
-                className="flex h-[50px] w-full items-center justify-center gap-2 rounded-lg bg-[#3D562F] px-5 text-[15px] font-semibold text-white transition-colors hover:bg-[#334827]"
+                className="flex h-11 w-full items-center justify-center rounded-lg bg-[#2B4628] px-5 text-sm font-medium text-[#F7F7F4] transition-colors hover:bg-[#223820]"
               >
-                <MessageCircle className="h-5 w-5" />
-                <span>Contactar a este puesto por WhatsApp</span>
+                WhatsApp
               </button>
             </div>
           </motion.div>

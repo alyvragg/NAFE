@@ -19,11 +19,14 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.supabase.co https://images.unsplash.com https://images.pexels.com; connect-src 'self' ipc: http://ipc.localhost https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org https://api.bigdatacloud.net https://get.geojs.io; media-src 'self' blob: data:;"
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.supabase.co https://*.onrender.com; connect-src 'self' ipc: http://ipc.localhost https://*.supabase.co wss://*.supabase.co https://*.onrender.com https://nominatim.openstreetmap.org https://api.bigdatacloud.net https://get.geojs.io; media-src 'self' blob: data:;"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": "all",
+    "android": {
+      "minSdkVersion": 24
+    }
   }
 }

@@ -4,11 +4,14 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import {
   UserRole,
   LocalProfile,
+  VerificationStatus,
+  SubscriptionTier,
   isValidEmail,
   saveLocalProfile,
   loadLocalProfile,
   clearLocalProfile,
 } from "@/components/auth/validators";
+import { consumeEmailVerification, requestEmailVerification, verifyEmailCode } from "@/lib/email";
 
 const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -59,7 +62,60 @@ export interface AuthResult {
   ok: boolean;
   profile?: LocalProfile;
   error?: string;
+  alreadyExists?: boolean;
   isOfflineFallback?: boolean;
+}
+
+/**
+ * Verifica en Supabase (auth.users + public.profiles) si el correo o WhatsApp ya está registrado.
+ */
+export async function checkAccountExistsInSupabase(
+  contact: string
+): Promise<boolean> {
+  const clean = contact.trim();
+  if (!clean) return false;
+  if (typeof navigator !== "undefined" && !navigator.onLine) return false;
+
+  try {
+    const { data, error } = await supabase.rpc("check_contact_exists", {
+      p_contact: clean,
+    });
+    if (error) return false;
+    return Boolean(data);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Solicita el OTP al servicio privado para que el código no se exponga al navegador.
+ */
+export async function requestOtpCodeInSupabase(
+  contact: string,
+  name?: string
+): Promise<{ ok: boolean; error?: string }> {
+  const clean = contact.trim();
+  if (!clean) {
+    return { ok: false, error: "Ingresa tu WhatsApp o correo." };
+  }
+
+  if (!isValidEmail(clean)) return { ok: false, error: "La verificación por WhatsApp aún no está disponible. Usa tu correo electrónico." };
+  return requestEmailVerification({ to: clean, name });
+}
+
+/**
+ * Valida el OTP en el servicio privado de verificación.
+ */
+export async function verifyOtpCodeInSupabase(
+  contact: string,
+  code: string
+): Promise<boolean> {
+  const cleanContact = contact.trim();
+  const cleanCode = code.trim();
+  if (!cleanContact || cleanCode.length !== 5) return false;
+
+  const result = await verifyEmailCode({ to: cleanContact, code: cleanCode });
+  return result.ok;
 }
 
 export async function signUpWithSupabase(params: {
@@ -76,20 +132,36 @@ export async function signUpWithSupabase(params: {
     name: cleanName,
     contact: cleanContact,
     role: params.role,
+    isVerified: false,
+    verificationStatus: "unverified",
+    subscriptionTier: "free",
     searchRadiusKm: 10,
     authenticatedAt: new Date().toISOString(),
   };
 
   if (typeof navigator !== "undefined" && !navigator.onLine) {
-    saveLocalProfile(localProfile);
     return {
-      ok: true,
-      profile: localProfile,
-      isOfflineFallback: true,
+      ok: false,
+      error: "Necesitas conexión a internet para crear tu cuenta.",
     };
   }
 
   try {
+    // 1. Verificar explícitamente si la cuenta ya existe
+    const exists = await checkAccountExistsInSupabase(cleanContact);
+    if (exists) {
+      return {
+        ok: false,
+        alreadyExists: true,
+        error: "Esta cuenta ya fue creada. Inicia sesión con tu contraseña.",
+      };
+    }
+
+    if (!isValidEmail(cleanContact) || !(await consumeEmailVerification(cleanContact))) {
+      return { ok: false, error: "Verifica tu correo antes de crear la cuenta." };
+    }
+
+    // 2. Crear cuenta real en Supabase Auth
     const { data, error } = await supabase.auth.signUp({
       email: authEmail,
       password: params.password,
@@ -104,46 +176,32 @@ export async function signUpWithSupabase(params: {
     });
 
     if (error) {
+      const lower = error.message.toLowerCase();
       if (
-        error.message.toLowerCase().includes("already registered") ||
-        error.message.toLowerCase().includes("already exists")
+        lower.includes("already registered") ||
+        lower.includes("already exists") ||
+        lower.includes("user already")
       ) {
-        const signInRes = await supabase.auth.signInWithPassword({
-          email: authEmail,
-          password: params.password,
-        });
-
-        if (signInRes.error) {
-          return {
-            ok: false,
-            error:
-              "Este WhatsApp o correo ya está registrado. Intenta iniciar sesión con tu contraseña.",
-          };
-        }
-
-        if (signInRes.data.user) {
-          await supabase.from("profiles").upsert(
-            {
-              id: signInRes.data.user.id,
-              full_name: cleanName,
-              contact: cleanContact,
-              phone_whatsapp: cleanContact,
-              role: params.role,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "id" }
-          );
-        }
-
-        const existingProf = {
-          ...localProfile,
-          userId: signInRes.data.user?.id,
+        return {
+          ok: false,
+          alreadyExists: true,
+          error: "Esta cuenta ya fue creada. Inicia sesión con tu contraseña.",
         };
-        saveLocalProfile(existingProf);
-        return { ok: true, profile: existingProf };
       }
-
       return { ok: false, error: translateSupabaseError(error.message) };
+    }
+
+    // Supabase devuelve identities vacío cuando el usuario ya existe y confirm email está activo
+    if (
+      data.user &&
+      Array.isArray(data.user.identities) &&
+      data.user.identities.length === 0
+    ) {
+      return {
+        ok: false,
+        alreadyExists: true,
+        error: "Esta cuenta ya fue creada. Inicia sesión con tu contraseña.",
+      };
     }
 
     let activeUser = data.user;
@@ -179,11 +237,9 @@ export async function signUpWithSupabase(params: {
 
     return { ok: true, profile: finalProfile };
   } catch {
-    saveLocalProfile(localProfile);
     return {
-      ok: true,
-      profile: localProfile,
-      isOfflineFallback: true,
+      ok: false,
+      error: "No se pudo conectar con Supabase. Intenta de nuevo.",
     };
   }
 }
@@ -203,18 +259,16 @@ export async function signInWithSupabase(params: {
 
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     const existing = loadLocalProfile();
-    const offlineProfile: LocalProfile = existing ?? {
-      name: capitalizedFallback,
-      contact: cleanIdentifier,
-      role: "both",
-      searchRadiusKm: 10,
-      authenticatedAt: new Date().toISOString(),
-    };
-    saveLocalProfile(offlineProfile);
+    if (existing) {
+      return {
+        ok: true,
+        profile: existing,
+        isOfflineFallback: true,
+      };
+    }
     return {
-      ok: true,
-      profile: offlineProfile,
-      isOfflineFallback: true,
+      ok: false,
+      error: "Sin conexión a internet para iniciar sesión.",
     };
   }
 
@@ -236,7 +290,7 @@ export async function signInWithSupabase(params: {
     const { data: profileRow } = await supabase
       .from("profiles")
       .select(
-        "full_name, contact, phone_whatsapp, role, stall_name, producer_bio, default_meeting_point, search_radius_km"
+        "full_name, avatar_url, contact, phone_whatsapp, role, stall_name, producer_bio, default_meeting_point, is_verified, verification_status, subscription_tier, search_radius_km"
       )
       .eq("id", data.user.id)
       .maybeSingle();
@@ -247,6 +301,7 @@ export async function signInWithSupabase(params: {
     const resolvedProfile: LocalProfile = {
       userId: data.user.id,
       name: profileRow?.full_name || meta.full_name || capitalizedFallback,
+      avatarUrl: profileRow?.avatar_url || undefined,
       contact:
         profileRow?.phone_whatsapp ||
         profileRow?.contact ||
@@ -256,6 +311,11 @@ export async function signInWithSupabase(params: {
       stallName: profileRow?.stall_name || undefined,
       producerBio: profileRow?.producer_bio || undefined,
       defaultMeetingPoint: profileRow?.default_meeting_point || undefined,
+      isVerified: Boolean(profileRow?.is_verified),
+      verificationStatus:
+        (profileRow?.verification_status as VerificationStatus) || "unverified",
+      subscriptionTier:
+        (profileRow?.subscription_tier as SubscriptionTier) || "free",
       searchRadiusKm: Number(profileRow?.search_radius_km) || 10,
       authenticatedAt: new Date().toISOString(),
     };
@@ -263,18 +323,9 @@ export async function signInWithSupabase(params: {
     saveLocalProfile(resolvedProfile);
     return { ok: true, profile: resolvedProfile };
   } catch {
-    const offlineProfile: LocalProfile = {
-      name: capitalizedFallback,
-      contact: cleanIdentifier,
-      role: "both",
-      searchRadiusKm: 10,
-      authenticatedAt: new Date().toISOString(),
-    };
-    saveLocalProfile(offlineProfile);
     return {
-      ok: true,
-      profile: offlineProfile,
-      isOfflineFallback: true,
+      ok: false,
+      error: "No se pudo conectar con Supabase. Verifica tu conexión.",
     };
   }
 }
@@ -284,11 +335,15 @@ export async function updateProfileInSupabase(
     Pick<
       LocalProfile,
       | "name"
+      | "avatarUrl"
       | "contact"
       | "role"
       | "stallName"
       | "producerBio"
       | "defaultMeetingPoint"
+      | "isVerified"
+      | "verificationStatus"
+      | "subscriptionTier"
       | "searchRadiusKm"
     >
   >
@@ -297,6 +352,9 @@ export async function updateProfileInSupabase(
     name: "Alex",
     contact: "",
     role: "both" as UserRole,
+    isVerified: false,
+    verificationStatus: "unverified" as VerificationStatus,
+    subscriptionTier: "free" as SubscriptionTier,
     searchRadiusKm: 10,
     authenticatedAt: new Date().toISOString(),
   };
@@ -320,12 +378,16 @@ export async function updateProfileInSupabase(
         .from("profiles")
         .update({
           full_name: updated.name,
+          avatar_url: updated.avatarUrl ?? null,
           contact: updated.contact,
           phone_whatsapp: updated.contact,
           role: updated.role,
           stall_name: updated.stallName ?? null,
           producer_bio: updated.producerBio ?? null,
           default_meeting_point: updated.defaultMeetingPoint ?? null,
+          is_verified: Boolean(updated.isVerified),
+          verification_status: updated.verificationStatus ?? "unverified",
+          subscription_tier: updated.subscriptionTier ?? "free",
           search_radius_km: updated.searchRadiusKm ?? 10,
           updated_at: new Date().toISOString(),
         })
@@ -336,6 +398,47 @@ export async function updateProfileInSupabase(
   }
 
   return updated;
+}
+
+export async function requestSellerVerification(params: {
+  stallName: string;
+  craftDescription: string;
+  publicPoint: string;
+}): Promise<LocalProfile> {
+  if (typeof navigator !== "undefined" && navigator.onLine) {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("verification_requests").insert({
+          user_id: user.id,
+          stall_name: params.stallName,
+          craft_description: params.craftDescription,
+          public_point: params.publicPoint,
+          status: "approved",
+        });
+      }
+    } catch {
+      // Ignore offline
+    }
+  }
+
+  return updateProfileInSupabase({
+    stallName: params.stallName,
+    producerBio: params.craftDescription,
+    defaultMeetingPoint: params.publicPoint,
+    isVerified: true,
+    verificationStatus: "verified",
+  });
+}
+
+export async function upgradeSubscriptionTier(
+  tier: SubscriptionTier
+): Promise<LocalProfile> {
+  return updateProfileInSupabase({
+    subscriptionTier: tier,
+  });
 }
 
 export async function updateRoleInSupabase(nextRole: UserRole): Promise<void> {
@@ -357,7 +460,10 @@ function translateSupabaseError(raw: string): string {
     lower.includes("invalid login credentials") ||
     lower.includes("invalid credentials")
   ) {
-    return "No encontramos una cuenta con ese WhatsApp/correo o la contraseña no coincide. Verifica tus datos o regístrate.";
+    return "Correo/WhatsApp o contraseña incorrectos. Verifica tus datos o regístrate.";
+  }
+  if (lower.includes("email not confirmed")) {
+    return "Tu cuenta está pendiente de confirmación.";
   }
   if (lower.includes("password should be at least")) {
     return "Tu contraseña debe tener al menos 6 caracteres.";

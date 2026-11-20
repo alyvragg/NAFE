@@ -1,13 +1,19 @@
 export type UserRole = "buyer" | "seller" | "both";
+export type VerificationStatus = "unverified" | "pending" | "verified";
+export type SubscriptionTier = "free" | "pro" | "coop";
 
 export interface LocalProfile {
   userId?: string;
   name: string;
+  avatarUrl?: string;
   contact: string;
   role: UserRole;
   stallName?: string;
   producerBio?: string;
   defaultMeetingPoint?: string;
+  isVerified?: boolean;
+  verificationStatus?: VerificationStatus;
+  subscriptionTier?: SubscriptionTier;
   searchRadiusKm?: number;
   authenticatedAt: string;
 }
@@ -29,7 +35,7 @@ export function validateContact(value: string): string | null {
     return "Por favor ingresa tu número de WhatsApp o correo electrónico.";
   }
   if (!isValidEmail(trimmed) && !isValidWhatsApp(trimmed)) {
-    return "Ingresa un correo válido o un WhatsApp de 10 dígitos (ej. 618 123 4567).";
+    return "Ingresa un correo válido o un WhatsApp de 10 dígitos.";
   }
   return null;
 }
@@ -67,6 +73,12 @@ export function formatContactDisplay(value: string): string {
   return trimmed;
 }
 
+export function getInitials(name: string): string {
+  const parts = (name || "Vecino").trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+}
+
 export const STORAGE_KEY = "nafe_local_profile_v1";
 export const PROFILE_CHANGE_EVENT = "nafe-local-profile-change";
 
@@ -76,7 +88,7 @@ export function saveLocalProfile(profile: LocalProfile): void {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
     window.dispatchEvent(new Event(PROFILE_CHANGE_EVENT));
   } catch {
-    // Ignore storage quota errors in restricted WebViews
+    // Ignore storage quota errors
   }
 }
 
