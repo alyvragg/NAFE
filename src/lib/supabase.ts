@@ -87,7 +87,6 @@ export async function checkAccountExistsInSupabase(
 ): Promise<boolean> {
   const clean = contact.trim();
   if (!clean) return false;
-  if (typeof navigator !== "undefined" && !navigator.onLine) return false;
 
   try {
     const { data, error } = await supabase.rpc("check_contact_exists", {
@@ -198,13 +197,6 @@ export async function signUpWithSupabase(params: {
     searchRadiusKm: 10,
     authenticatedAt: new Date().toISOString(),
   };
-
-  if (typeof navigator !== "undefined" && !navigator.onLine) {
-    return {
-      ok: false,
-      error: "Necesitas conexión a internet para crear tu cuenta.",
-    };
-  }
 
   try {
     // 1. Verificar explícitamente si la cuenta ya existe
@@ -317,21 +309,6 @@ export async function signInWithSupabase(params: {
     : "Vecino";
   const capitalizedFallback =
     fallbackDerivedName.charAt(0).toUpperCase() + fallbackDerivedName.slice(1);
-
-  if (typeof navigator !== "undefined" && !navigator.onLine) {
-    const existing = loadLocalProfile();
-    if (existing) {
-      return {
-        ok: true,
-        profile: existing,
-        isOfflineFallback: true,
-      };
-    }
-    return {
-      ok: false,
-      error: "Sin conexión a internet para iniciar sesión.",
-    };
-  }
 
   try {
     const { data, error } = await supabase.auth.signInWithPassword({

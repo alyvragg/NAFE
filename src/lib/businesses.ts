@@ -221,10 +221,7 @@ export async function fetchBusinessesFromSupabase(
 ): Promise<ProducerPost[]> {
   const cached = (await loadOfflineBusinesses<ProducerPost>()) ?? [];
 
-  if (
-    isOfflineSimulated ||
-    (typeof navigator !== "undefined" && !navigator.onLine)
-  ) {
+  if (isOfflineSimulated) {
     return anchorAndMeasureBusinesses(cached, userCoords, maxRadiusKm, cityLabel);
   }
 
