@@ -719,10 +719,60 @@ export function OnboardingFlow({
             >
               <div className="space-y-1">
                 <h1 className="font-serif text-2xl font-medium leading-tight tracking-[-0.015em] text-[#F7F7F4]/95 sm:text-3xl">
-                  Tu cuenta está lista, {firstName}. ¿Quieres activar un plan?
+                  Tu cuenta está lista, {firstName}.
                 </h1>
                 <p className="text-xs text-[#F7F7F4]/70">
-                  Puedes empezar gratis con Plan Semilla o elegir un plan para
+                  Antes de entrar, así funciona tu mapa de productores y los
+                  planes disponibles.
+                </p>
+              </div>
+
+              {/* Mini-tutorial de cómo funciona el mapa */}
+              <div className="space-y-2.5 rounded-xl bg-[#F7F7F4] p-4 text-[#13150C]">
+                <h2 className="text-sm font-semibold text-[#13150C]">
+                  Cómo funciona el mapa
+                </h2>
+                <ul className="space-y-2 text-xs leading-relaxed text-[#6E6D5F]">
+                  <li className="flex items-start gap-2.5">
+                    <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[#D9383A]" />
+                    <span>
+                      <strong className="font-semibold text-[#13150C]">
+                        Puntos rojos:
+                      </strong>{" "}
+                      son productores y puestos locales cerca de ti. Si el punto
+                      pulsa, significa que confirmó stock disponible hoy.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[#2B4628]" />
+                    <span>
+                      <strong className="font-semibold text-[#13150C]">
+                        Punto verde y círculo:
+                      </strong>{" "}
+                      marcan tu ubicación actual y el radio de búsqueda que
+                      elijas (5, 10, 25 o 50 km).
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[#C88A1E]" />
+                    <span>
+                      <strong className="font-semibold text-[#13150C]">
+                        Toca cualquier punto:
+                      </strong>{" "}
+                      verás fotos, punto de encuentro seguro, reseñas, chat en
+                      vivo y podrás guardarlo en favoritos para recibir avisos
+                      cuando tenga stock.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <h2 className="text-sm font-semibold text-[#F7F7F4]">
+                  ¿Quieres activar un plan?
+                </h2>
+                <p className="text-xs text-[#F7F7F4]/70">
+                  Puedes entrar gratis con Plan Semilla o elegir un plan para
                   desbloquear más puestos, fotos y estadísticas.
                 </p>
               </div>
