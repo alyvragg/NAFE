@@ -45,6 +45,7 @@ const SHORT_CATEGORY_LABELS: Record<ProducerCategory, string> = {
   "Artesanía y Talleres": "Artesanía",
   "Textiles y Moda Local": "Textiles",
   "Servicios y Oficios": "Servicios",
+  Otro: "Otro",
 };
 
 export function getShortCategoryLabel(category: ProducerCategory): string {

@@ -6,7 +6,6 @@ import {
   Bookmark,
   MessageSquare,
   Store,
-  User,
 } from "lucide-react";
 
 export type BottomNavTab =
@@ -42,7 +41,6 @@ export function BottomNav({
     ...(showSellerTab
       ? [{ id: "seller" as const, label: "Mi puesto", icon: Store }]
       : []),
-    { id: "profile", label: "Perfil", icon: User },
   ];
 
   return (
@@ -52,7 +50,7 @@ export function BottomNav({
     >
       <div
         className={`mx-auto grid max-w-[420px] gap-1 ${
-          showSellerTab ? "grid-cols-5" : "grid-cols-4"
+          showSellerTab ? "grid-cols-4" : "grid-cols-3"
         }`}
       >
         {navItems.map((item) => {

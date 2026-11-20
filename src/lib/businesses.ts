@@ -26,7 +26,8 @@ export type ProducerCategory =
   | "Campo y Huerta"
   | "Artesanía y Talleres"
   | "Textiles y Moda Local"
-  | "Servicios y Oficios";
+  | "Servicios y Oficios"
+  | "Otro";
 
 export type CategorySlug =
   | "comida"
@@ -35,7 +36,8 @@ export type CategorySlug =
   | "campo"
   | "artesania"
   | "textiles"
-  | "servicios";
+  | "servicios"
+  | "otro";
 
 export type FreshnessStatus = "confirmed" | "on_request";
 
@@ -113,6 +115,7 @@ export const PRODUCER_CATEGORIES: ProducerCategory[] = [
   "Artesanía y Talleres",
   "Textiles y Moda Local",
   "Servicios y Oficios",
+  "Otro",
 ];
 
 const SLUG_TO_LABEL: Record<
@@ -126,6 +129,7 @@ const SLUG_TO_LABEL: Record<
   artesania: "Artesanía y Talleres",
   textiles: "Textiles y Moda Local",
   servicios: "Servicios y Oficios",
+  otro: "Otro",
 };
 
 const LABEL_TO_SLUG: Record<
@@ -139,6 +143,7 @@ const LABEL_TO_SLUG: Record<
   "Artesanía y Talleres": "artesania",
   "Textiles y Moda Local": "textiles",
   "Servicios y Oficios": "servicios",
+  Otro: "otro",
 };
 
 export function categorySlugToLabel(

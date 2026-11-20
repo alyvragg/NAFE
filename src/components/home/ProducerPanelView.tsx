@@ -55,6 +55,7 @@ const CATEGORIES: Array<Exclude<ProducerCategory, "Todo">> = [
   "Artesanía y Talleres",
   "Textiles y Moda Local",
   "Servicios y Oficios",
+  "Otro",
 ];
 
 const TIER_LABELS = {
