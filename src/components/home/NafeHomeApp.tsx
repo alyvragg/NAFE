@@ -143,11 +143,14 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
   useEffect(() => {
     let active = true;
     const reloadBusinesses = () => {
-      fetchBusinessesFromSupabase(isOffline, userCoords, searchRadiusKm).then(
-        (list) => {
-          if (active) setProducers(list);
-        }
-      );
+      fetchBusinessesFromSupabase(
+        isOffline,
+        userCoords,
+        searchRadiusKm,
+        cityLabel
+      ).then((list) => {
+        if (active) setProducers(list);
+      });
     };
 
     reloadBusinesses();
@@ -183,7 +186,7 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
       active = false;
       void supabase.removeChannel(realtimeBusinessesChannel);
     };
-  }, [isOffline, userCoords, searchRadiusKm]);
+  }, [isOffline, userCoords, searchRadiusKm, cityLabel]);
 
   useEffect(() => {
     let active = true;
@@ -843,7 +846,7 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
           />
         </div>
 
-        <main className="nafe-scroll flex-1 overflow-y-auto px-4 pt-2.5">
+        <main className="nafe-scroll min-h-0 flex-1 overflow-y-auto px-4 pt-2.5 pb-6">
           <AnimatePresence mode="wait">
             {renderMainContent(false)}
           </AnimatePresence>

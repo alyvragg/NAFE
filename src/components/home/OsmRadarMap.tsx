@@ -63,7 +63,16 @@ export default function OsmRadarMap({
     mapInstanceRef.current = map;
     markersLayerRef.current = layerGroup;
 
+    // Evitar tiles en blanco o desfasados en Android WebView / transiciones
+    const invalidateTimer = window.setTimeout(() => {
+      map.invalidateSize();
+    }, 260);
+    const handleResize = () => map.invalidateSize();
+    window.addEventListener("resize", handleResize);
+
     return () => {
+      window.clearTimeout(invalidateTimer);
+      window.removeEventListener("resize", handleResize);
       map.remove();
       mapInstanceRef.current = null;
       markersLayerRef.current = null;
@@ -74,10 +83,18 @@ export default function OsmRadarMap({
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
-    map.setView([userCoords.lat, userCoords.lng], map.getZoom(), {
+    const targetZoom =
+      searchRadiusKm <= 5
+        ? 13
+        : searchRadiusKm <= 10
+          ? 12
+          : searchRadiusKm <= 25
+            ? 11
+            : 10;
+    map.setView([userCoords.lat, userCoords.lng], targetZoom, {
       animate: true,
     });
-  }, [userCoords.lat, userCoords.lng]);
+  }, [userCoords.lat, userCoords.lng, searchRadiusKm]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -178,11 +195,11 @@ export default function OsmRadarMap({
     : false;
 
   return (
-    <div className="relative h-[460px] w-full overflow-hidden rounded-xl bg-[#EFEFEA] shadow-[0_2px_10px_rgba(19,21,12,0.04)] sm:h-[540px]">
+    <div className="relative h-[calc(100dvh-300px)] min-h-[420px] w-full overflow-hidden rounded-xl bg-[#EFEFEA] shadow-[0_2px_10px_rgba(19,21,12,0.04)] sm:h-[540px]">
       <div ref={mapContainerRef} className="z-0 h-full w-full" />
 
       {/* Controles flotantes */}
-      <div className="pointer-events-none absolute left-3 right-14 top-3 z-[400] flex flex-wrap items-center gap-2">
+      <div className="pointer-events-none absolute left-3 right-14 top-3 z-[400] flex flex-wrap items-center gap-1.5 sm:gap-2">
         <div className="pointer-events-auto inline-flex items-center gap-2 rounded-lg bg-[#FFFFFF]/95 px-3 py-1.5 text-xs font-medium text-[#13150C] shadow-[0_2px_10px_rgba(19,21,12,0.08)] backdrop-blur-md">
           <span className="h-2.5 w-2.5 rounded-full bg-[#D9383A]" />
           <span>{producers.length} en el radar</span>
@@ -217,9 +234,9 @@ export default function OsmRadarMap({
 
       {/* Tarjeta Flotante al tocar una bolita roja */}
       {activeCardProducer && (
-        <div className="absolute inset-x-3 bottom-3 z-[450] mx-auto max-w-[430px] overflow-hidden rounded-xl bg-[#FFFFFF] shadow-[0_14px_38px_rgba(19,21,12,0.2)]">
+        <div className="nafe-scroll absolute inset-x-3 bottom-3 z-[450] mx-auto max-h-[72%] max-w-[430px] overflow-y-auto rounded-xl bg-[#FFFFFF] shadow-[0_14px_38px_rgba(19,21,12,0.2)]">
           {activePhotos.length > 0 && (
-            <div className="relative h-32 w-full bg-[#EFEFEA]">
+            <div className="relative h-24 w-full bg-[#EFEFEA] sm:h-32">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={activePhotos[photoIdx % activePhotos.length]}

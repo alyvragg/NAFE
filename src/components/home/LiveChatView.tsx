@@ -18,6 +18,10 @@ import {
   getConversationSales,
 } from "@/lib/sales";
 import { UserRole, getInitials } from "@/components/auth/validators";
+import {
+  buildDemoProducerReply,
+  isDemoBusinessId,
+} from "@/lib/demoBusinesses";
 
 interface LiveChatViewProps {
   userName: string;
@@ -180,6 +184,27 @@ export function LiveChatView({
       prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]
     );
     setSending(false);
+
+    // Respuesta automática en negocios de prueba para validar el chat en vivo
+    if (isDemoBusinessId(activeConversation.businessId)) {
+      const targetConv = activeConversation;
+      window.setTimeout(async () => {
+        const replyBody = buildDemoProducerReply(
+          targetConv.businessName,
+          targetConv.producerName,
+          text
+        );
+        const replyMsg = await sendChatMessage({
+          conversationId: targetConv.id,
+          senderName: targetConv.producerName,
+          body: replyBody,
+          isFromSeller: true,
+        });
+        setMessages((prev) =>
+          prev.some((m) => m.id === replyMsg.id) ? prev : [...prev, replyMsg]
+        );
+      }, 1100);
+    }
   };
 
   const handleQuickMarkSale = async (e: React.FormEvent) => {
@@ -319,7 +344,7 @@ export function LiveChatView({
   const latestSale = conversationSales[0] ?? null;
 
   return (
-    <div className="flex h-[540px] flex-col overflow-hidden rounded-xl bg-[#FFFFFF] shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
+    <div className="flex h-[calc(100dvh-230px)] min-h-[380px] max-h-[620px] flex-col overflow-hidden rounded-xl bg-[#FFFFFF] shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
       {/* Chat Header */}
       <div className="flex items-center gap-2 bg-[#EFEFEA] px-3.5 py-2.5">
         <button
@@ -512,7 +537,7 @@ export function LiveChatView({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Mensaje"
-          className="h-10 flex-1 rounded-lg bg-[#EFEFEA] px-3 text-sm text-[#13150C] placeholder:text-[#6E6D5F] outline-none focus:bg-[#FFFFFF]"
+          className="h-10 min-w-0 flex-1 rounded-lg bg-[#EFEFEA] px-3 text-[16px] text-[#13150C] placeholder:text-[#6E6D5F] outline-none focus:bg-[#FFFFFF] sm:text-sm"
         />
         <button
           type="submit"

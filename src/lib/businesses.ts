@@ -11,6 +11,12 @@ import {
   sortBusinessesByDistance,
 } from "./nativeBridge";
 import { SubscriptionTier } from "@/components/auth/validators";
+import {
+  anchorDemoBusinessesAroundCoords,
+  buildNearbyDemoBusinesses,
+  getDemoReviewsForBusiness,
+  isDemoBusinessId,
+} from "./demoBusinesses";
 
 export type ProducerCategory =
   | "Todo"
@@ -181,30 +187,19 @@ export function rememberMyPublishedId(id: string): void {
 export async function anchorAndMeasureBusinesses(
   rawList: ProducerPost[],
   userCoords: GeoCoordinates,
-  maxRadiusKm = 0
+  maxRadiusKm = 0,
+  cityLabel?: string
 ): Promise<ProducerPost[]> {
-  const distFromDefaultBase = haversineDistanceKm(
-    userCoords.lat,
-    userCoords.lng,
-    DEFAULT_CENTER_COORDS.lat,
-    DEFAULT_CENTER_COORDS.lng
+  const effectiveList =
+    rawList.length > 0
+      ? rawList
+      : buildNearbyDemoBusinesses(userCoords, cityLabel);
+
+  const anchored = anchorDemoBusinessesAroundCoords(
+    effectiveList,
+    userCoords,
+    cityLabel
   );
-
-  const shouldAnchorToUserCity = distFromDefaultBase > 25;
-
-  const anchored = rawList.map((item) => {
-    if (!shouldAnchorToUserCity || item.isUserPost) return item;
-    const dLat = item.approxLat - DEFAULT_CENTER_COORDS.lat;
-    const dLng = item.approxLng - DEFAULT_CENTER_COORDS.lng;
-    if (Math.abs(dLat) > 0.15 || Math.abs(dLng) > 0.15) {
-      return item;
-    }
-    return {
-      ...item,
-      approxLat: Number((userCoords.lat + dLat).toFixed(6)),
-      approxLng: Number((userCoords.lng + dLng).toFixed(6)),
-    };
-  });
 
   return sortBusinessesByDistance(
     userCoords.lat,
@@ -215,13 +210,14 @@ export async function anchorAndMeasureBusinesses(
 }
 
 /**
- * Consulta 100% real a `public.businesses` en Supabase (con respaldo a caché Rust/localStorage si no hay red).
- * Cero mocks y cero URLs externas hardcodeadas.
+ * Consulta 100% real a `public.businesses` en Supabase (con respaldo a caché Rust/localStorage
+ * y negocios de prueba cercanos a la ubicación actual si aún no hay registros locales).
  */
 export async function fetchBusinessesFromSupabase(
   isOfflineSimulated: boolean,
   userCoords: GeoCoordinates = DEFAULT_CENTER_COORDS,
-  maxRadiusKm = 0
+  maxRadiusKm = 0,
+  cityLabel?: string
 ): Promise<ProducerPost[]> {
   const cached = (await loadOfflineBusinesses<ProducerPost>()) ?? [];
 
@@ -229,7 +225,7 @@ export async function fetchBusinessesFromSupabase(
     isOfflineSimulated ||
     (typeof navigator !== "undefined" && !navigator.onLine)
   ) {
-    return anchorAndMeasureBusinesses(cached, userCoords, maxRadiusKm);
+    return anchorAndMeasureBusinesses(cached, userCoords, maxRadiusKm, cityLabel);
   }
 
   try {
@@ -241,7 +237,7 @@ export async function fetchBusinessesFromSupabase(
       .order("created_at", { ascending: false });
 
     if (error || !data) {
-      return anchorAndMeasureBusinesses(cached, userCoords, maxRadiusKm);
+      return anchorAndMeasureBusinesses(cached, userCoords, maxRadiusKm, cityLabel);
     }
 
     const myIds = new Set(loadMyPublishedIds());
@@ -278,9 +274,9 @@ export async function fetchBusinessesFromSupabase(
     });
 
     await saveOfflineBusinesses(mapped);
-    return anchorAndMeasureBusinesses(mapped, userCoords, maxRadiusKm);
+    return anchorAndMeasureBusinesses(mapped, userCoords, maxRadiusKm, cityLabel);
   } catch {
-    return anchorAndMeasureBusinesses(cached, userCoords, maxRadiusKm);
+    return anchorAndMeasureBusinesses(cached, userCoords, maxRadiusKm, cityLabel);
   }
 }
 
@@ -477,7 +473,9 @@ export async function fetchBusinessReviews(
     !navigator.onLine ||
     businessId.startsWith("local-")
   ) {
-    return [];
+    return isDemoBusinessId(businessId)
+      ? getDemoReviewsForBusiness(businessId)
+      : [];
   }
 
   try {
@@ -488,7 +486,11 @@ export async function fetchBusinessReviews(
       .order("created_at", { ascending: false })
       .limit(20);
 
-    if (!data) return [];
+    if (!data || data.length === 0) {
+      return isDemoBusinessId(businessId)
+        ? getDemoReviewsForBusiness(businessId)
+        : [];
+    }
     return data.map((r) => ({
       id: String(r.id),
       businessId: String(r.business_id),
@@ -498,7 +500,9 @@ export async function fetchBusinessReviews(
       createdAt: r.created_at,
     }));
   } catch {
-    return [];
+    return isDemoBusinessId(businessId)
+      ? getDemoReviewsForBusiness(businessId)
+      : [];
   }
 }
 

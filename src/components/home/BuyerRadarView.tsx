@@ -122,7 +122,7 @@ export function BuyerRadarView({
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar"
             aria-label="Buscar"
-            className="h-11 w-full rounded-lg bg-[#FFFFFF] pl-10 pr-9 text-sm text-[#13150C] placeholder:text-[#6E6D5F] shadow-[0_2px_10px_rgba(19,21,12,0.04)] outline-none"
+            className="h-11 w-full rounded-lg bg-[#FFFFFF] pl-10 pr-9 text-[16px] text-[#13150C] placeholder:text-[#6E6D5F] shadow-[0_2px_10px_rgba(19,21,12,0.04)] outline-none sm:text-sm"
           />
           {searchQuery && (
             <button

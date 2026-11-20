@@ -211,9 +211,9 @@ export function WelcomeHero({ forcedMobile = false }: WelcomeHeroProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.65, ease: CURTAIN_EASE }}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#13150C] text-[#F7F7F4]"
+            className="nafe-scroll fixed inset-0 z-50 flex flex-col items-center justify-start overflow-y-auto bg-[#13150C] text-[#F7F7F4] sm:justify-center"
           >
-            <div className="relative z-10 flex h-full w-full max-w-[520px] flex-col justify-between px-6 py-6 sm:py-10">
+            <div className="relative z-10 flex min-h-full w-full max-w-[520px] flex-col justify-between px-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:py-10">
               <AnimatePresence mode="wait">
                 {mode === "login" && (
                   <LoginForm

@@ -1,6 +1,10 @@
 "use client";
 
 import { supabase } from "./supabase";
+import {
+  getDemoPublicSalesForBusiness,
+  isDemoBusinessId,
+} from "./demoBusinesses";
 
 export interface SellerSaleRecord {
   id: string;
@@ -362,6 +366,9 @@ export async function getPublicBusinessSales(
     !navigator.onLine ||
     businessId.startsWith("local-")
   ) {
+    if (localForBiz.length === 0 && isDemoBusinessId(businessId)) {
+      return getDemoPublicSalesForBusiness(businessId).slice(0, limit);
+    }
     return localForBiz.slice(0, limit);
   }
 
@@ -394,7 +401,11 @@ export async function getPublicBusinessSales(
 
       const remoteIds = new Set(remoteList.map((r) => r.id));
       const localUnsynced = localForBiz.filter((l) => !remoteIds.has(l.id));
-      return [...localUnsynced, ...remoteList].slice(0, limit);
+      const combined = [...localUnsynced, ...remoteList];
+      if (combined.length === 0 && isDemoBusinessId(businessId)) {
+        return getDemoPublicSalesForBusiness(businessId).slice(0, limit);
+      }
+      return combined.slice(0, limit);
     }
 
     // Fallback a la vista pública segura `public_business_sales`
@@ -430,6 +441,9 @@ export async function getPublicBusinessSales(
     // Fallback
   }
 
+  if (localForBiz.length === 0 && isDemoBusinessId(businessId)) {
+    return getDemoPublicSalesForBusiness(businessId).slice(0, limit);
+  }
   return localForBiz.slice(0, limit);
 }
 

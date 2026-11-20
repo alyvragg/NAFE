@@ -46,10 +46,10 @@ export function HomeHeader({
   return (
     <header className="relative space-y-3 pb-2">
       {/* Top Navbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-nowrap items-center justify-between gap-2">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 focus:outline-none"
+          className="inline-flex shrink-0 items-center gap-2 focus:outline-none"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -62,15 +62,15 @@ export function HomeHeader({
           </span>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           {/* Ubicación Real `haru` (Solo texto limpio) */}
           <button
             type="button"
             onClick={onRefreshLocation}
             disabled={isLocating}
-            className="inline-flex h-8 items-center rounded-lg bg-[#EFEFEA] px-3 text-xs font-medium text-[#13150C] transition-colors hover:bg-[#FFFFFF]"
+            className="inline-flex h-8 min-w-0 items-center rounded-lg bg-[#EFEFEA] px-2.5 text-xs font-medium text-[#13150C] transition-colors hover:bg-[#FFFFFF] sm:px-3"
           >
-            <span className="max-w-[155px] truncate sm:max-w-[220px]">
+            <span className="max-w-[125px] truncate sm:max-w-[220px]">
               {isLocating ? "Ubicando…" : cityLabel}
             </span>
           </button>
