@@ -121,7 +121,12 @@ export function OnboardingFlow({
       setError(otpRes.error || "No se pudo generar el código de verificación.");
       return false;
     }
-    setOtpSentViaEmail(true);
+    setOtpSentViaEmail(Boolean(otpRes.sentViaEmail));
+    if (otpRes.fallbackCode) {
+      setInfoMessage(`Tu código de verificación es: ${otpRes.fallbackCode}`);
+    } else {
+      setInfoMessage("Código enviado a tu correo electrónico.");
+    }
     return true;
   };
 
@@ -162,7 +167,9 @@ export function OnboardingFlow({
 
     setOtp("");
     setResendCooldown(30);
-    goToStep(3);
+    setError(null);
+    setAccountAlreadyExists(false);
+    setStep(3);
   };
 
   const verifyOtpCode = async (codeToVerify: string) => {

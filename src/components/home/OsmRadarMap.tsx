@@ -52,10 +52,26 @@ export default function OsmRadarMap({
       attributionControl: true,
     });
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors",
-    }).addTo(map);
+    const primaryTiles = L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      {
+        maxZoom: 19,
+        subdomains: "abcd",
+        attribution: "&copy; OpenStreetMap &copy; CARTO",
+      }
+    );
+
+    let fallbackAttached = false;
+    primaryTiles.on("tileerror", () => {
+      if (fallbackAttached) return;
+      fallbackAttached = true;
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+    });
+
+    primaryTiles.addTo(map);
 
     L.control.zoom({ position: "topright" }).addTo(map);
 
@@ -67,12 +83,25 @@ export default function OsmRadarMap({
     const invalidateTimer = window.setTimeout(() => {
       map.invalidateSize();
     }, 260);
+    const invalidateTimer2 = window.setTimeout(() => {
+      map.invalidateSize();
+    }, 800);
     const handleResize = () => map.invalidateSize();
     window.addEventListener("resize", handleResize);
 
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && mapContainerRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        map.invalidateSize();
+      });
+      resizeObserver.observe(mapContainerRef.current);
+    }
+
     return () => {
       window.clearTimeout(invalidateTimer);
+      window.clearTimeout(invalidateTimer2);
       window.removeEventListener("resize", handleResize);
+      resizeObserver?.disconnect();
       map.remove();
       mapInstanceRef.current = null;
       markersLayerRef.current = null;

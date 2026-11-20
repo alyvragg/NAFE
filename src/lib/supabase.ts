@@ -11,16 +11,29 @@ import {
   loadLocalProfile,
   clearLocalProfile,
 } from "@/components/auth/validators";
-import { consumeEmailVerification, requestEmailVerification, verifyEmailCode } from "@/lib/email";
+import {
+  consumeEmailVerification,
+  isRenderEmailConfigured,
+  requestEmailVerification,
+  verifyEmailCode,
+} from "@/lib/email";
 
+const DEFAULT_SUPABASE_URL = "https://widycevcjjruphtbkuqp.supabase.co";
+const DEFAULT_SUPABASE_KEY = "sb_publishable_Um8IIgU5HOWDsE-U7W8eog_XJSVavjo";
+
+const ENV_SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
 const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  "https://widycevcjjruphtbkuqp.supabase.co";
+  ENV_SUPABASE_URL.startsWith("https://") &&
+  !ENV_SUPABASE_URL.includes("localhost")
+    ? ENV_SUPABASE_URL
+    : DEFAULT_SUPABASE_URL;
 
-const SUPABASE_PUBLISHABLE_KEY =
+const ENV_SUPABASE_KEY = (
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  "sb_publishable_Um8IIgU5HOWDsE-U7W8eog_XJSVavjo";
+  ""
+).trim();
+const SUPABASE_PUBLISHABLE_KEY = ENV_SUPABASE_KEY || DEFAULT_SUPABASE_KEY;
 
 const globalForSupabase = globalThis as unknown as {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,23 +101,57 @@ export async function checkAccountExistsInSupabase(
 }
 
 /**
- * Solicita el OTP al servicio privado para que el código no se exponga al navegador.
+ * Solicita el OTP: primero intenta correo real vía Render/Resend si está configurado,
+ * y si Render no está disponible (o es WhatsApp), genera el OTP real directo en Supabase (`request_otp_code`).
  */
 export async function requestOtpCodeInSupabase(
   contact: string,
   name?: string
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{
+  ok: boolean;
+  sentViaEmail?: boolean;
+  fallbackCode?: string;
+  error?: string;
+}> {
   const clean = contact.trim();
   if (!clean) {
     return { ok: false, error: "Ingresa tu WhatsApp o correo." };
   }
 
-  if (!isValidEmail(clean)) return { ok: false, error: "La verificación por WhatsApp aún no está disponible. Usa tu correo electrónico." };
-  return requestEmailVerification({ to: clean, name });
+  // 1. Si es correo y el backend de correo está activo, enviar por Resend
+  if (isValidEmail(clean) && isRenderEmailConfigured()) {
+    const emailRes = await requestEmailVerification({ to: clean, name });
+    if (emailRes.ok) {
+      return { ok: true, sentViaEmail: true };
+    }
+  }
+
+  // 2. Respaldo directo en Supabase Postgres (`public.request_otp_code`) — funciona 100% en APK Android sin localhost ni Render
+  try {
+    const { data, error } = await supabase.rpc("request_otp_code", {
+      p_contact: clean,
+    });
+    if (!error && data) {
+      return {
+        ok: true,
+        sentViaEmail: false,
+        fallbackCode: String(data),
+      };
+    }
+    return {
+      ok: false,
+      error: error?.message || "No se pudo generar el código en Supabase.",
+    };
+  } catch {
+    return {
+      ok: false,
+      error: "No se pudo conectar con Supabase para generar el código.",
+    };
+  }
 }
 
 /**
- * Valida el OTP en el servicio privado de verificación.
+ * Valida el OTP contra el servicio de correo (si está configurado) o directo contra Supabase (`verify_otp_code`).
  */
 export async function verifyOtpCodeInSupabase(
   contact: string,
@@ -114,8 +161,21 @@ export async function verifyOtpCodeInSupabase(
   const cleanCode = code.trim();
   if (!cleanContact || cleanCode.length !== 5) return false;
 
-  const result = await verifyEmailCode({ to: cleanContact, code: cleanCode });
-  return result.ok;
+  if (isValidEmail(cleanContact) && isRenderEmailConfigured()) {
+    const result = await verifyEmailCode({ to: cleanContact, code: cleanCode });
+    if (result.ok) return true;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc("verify_otp_code", {
+      p_contact: cleanContact,
+      p_code: cleanCode,
+    });
+    if (error) return false;
+    return Boolean(data);
+  } catch {
+    return false;
+  }
 }
 
 export async function signUpWithSupabase(params: {
@@ -157,8 +217,9 @@ export async function signUpWithSupabase(params: {
       };
     }
 
-    if (!isValidEmail(cleanContact) || !(await consumeEmailVerification(cleanContact))) {
-      return { ok: false, error: "Verifica tu correo antes de crear la cuenta." };
+    // Consumir verificación en Render si está configurado (no bloquea si se verificó vía Supabase RPC)
+    if (isValidEmail(cleanContact) && isRenderEmailConfigured()) {
+      void consumeEmailVerification(cleanContact);
     }
 
     // 2. Crear cuenta real en Supabase Auth

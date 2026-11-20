@@ -36,9 +36,12 @@ import {
 } from "@/lib/nativeBridge";
 import {
   FavoriteStockAlert,
+  NotificationPermissionState,
+  getStockAlertPermissionStatus,
   requestStockAlertPermission,
   subscribeToFavoriteStockAlerts,
 } from "@/lib/favoriteStockService";
+import { buildNearbyDemoBusinesses } from "@/lib/demoBusinesses";
 import { usePlatform } from "@/lib/platform";
 import { HomeHeader, ActiveWorkspaceMode } from "./HomeHeader";
 import { BuyerRadarView } from "./BuyerRadarView";
@@ -86,7 +89,11 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
 
   const [searchRadiusKm, setSearchRadiusKm] = useState<number>(10);
 
-  const [producers, setProducers] = useState<ProducerPost[]>([]);
+  const [producers, setProducers] = useState<ProducerPost[]>(() =>
+    buildNearbyDemoBusinesses(DEFAULT_HARU_COORDS)
+  );
+  const [notifPermission, setNotifPermission] =
+    useState<NotificationPermissionState>("default");
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [selectedProducer, setSelectedProducer] =
     useState<ProducerPost | null>(null);
@@ -150,6 +157,14 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
 
   useEffect(() => {
     refreshUserLocation(false);
+    // Solicitar permiso de notificaciones de vendedores favoritos en Android / Web
+    void getStockAlertPermissionStatus().then(async (status) => {
+      setNotifPermission(status);
+      if (status === "default") {
+        const granted = await requestStockAlertPermission();
+        setNotifPermission(granted ? "granted" : "default");
+      }
+    });
   }, [refreshUserLocation]);
 
   useEffect(() => {
@@ -322,7 +337,9 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
     setSavedIds(nextIds);
 
     if (!isCurrentlySaved) {
-      void requestStockAlertPermission();
+      void requestStockAlertPermission().then((granted) => {
+        if (granted) setNotifPermission("granted");
+      });
       const target = producers.find((p) => p.id === id);
       if (target) {
         const previewNotif: AppNotification = {
@@ -569,6 +586,37 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
             </button>
           ))}
         </div>
+      </section>
+
+      {/* Notificaciones de vendedores favoritos */}
+      <section className="flex items-center justify-between gap-3 rounded-xl bg-[#FFFFFF] p-4 shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-[#13150C]">
+            Alertas de stock favorito
+          </h3>
+          <p className="mt-0.5 text-xs text-[#6E6D5F]">
+            {notifPermission === "granted"
+              ? "Notificaciones activas cuando tus favoritos marquen stock."
+              : "Activa el permiso para recibir avisos de tus vendedores favoritos."}
+          </p>
+        </div>
+
+        {notifPermission === "granted" ? (
+          <span className="shrink-0 rounded-md bg-[#1F3A26] px-2.5 py-1 text-xs font-medium text-[#F4F7F4]">
+            Activas
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={async () => {
+              const granted = await requestStockAlertPermission();
+              setNotifPermission(granted ? "granted" : "denied");
+            }}
+            className="h-9 shrink-0 rounded-lg bg-[#2B4628] px-3 text-xs font-semibold text-[#F7F7F4] transition-colors hover:bg-[#223820]"
+          >
+            Activar
+          </button>
+        )}
       </section>
 
       {/* Selector de Rol (Cero cajas de íconos, cero subtítulos) */}

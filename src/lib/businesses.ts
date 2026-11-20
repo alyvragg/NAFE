@@ -229,12 +229,21 @@ export async function fetchBusinessesFromSupabase(
   }
 
   try {
-    const { data, error } = await supabase
+    const queryPromise = supabase
       .from("businesses")
       .select(
         "id, owner_id, name, producer_name, category, description, public_meeting_point, schedule_today, approx_lat, approx_lng, whatsapp, is_in_stock, expires_at, photos, avg_rating, reviews_count, completed_sales_count, verified_sales_count"
       )
       .order("created_at", { ascending: false });
+
+    const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) =>
+      setTimeout(
+        () => resolve({ data: null, error: new Error("Supabase timeout") }),
+        6000
+      )
+    );
+
+    const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
 
     if (error || !data) {
       return anchorAndMeasureBusinesses(cached, userCoords, maxRadiusKm, cityLabel);

@@ -1,7 +1,10 @@
 "use client";
 
 import { supabase } from "./supabase";
-import { triggerNativeStockNotification } from "./nativeBridge";
+import {
+  isTauriEnvironment,
+  triggerNativeStockNotification,
+} from "./nativeBridge";
 
 export interface FavoriteStockAlert {
   id: string;
@@ -24,10 +27,46 @@ function isDuplicateAlert(businessId: string): boolean {
   return false;
 }
 
+export type NotificationPermissionState =
+  | "granted"
+  | "denied"
+  | "default"
+  | "unsupported";
+
+export async function getStockAlertPermissionStatus(): Promise<NotificationPermissionState> {
+  if (isTauriEnvironment()) {
+    try {
+      const notifPlugin = await import("@tauri-apps/plugin-notification");
+      const granted = await notifPlugin.isPermissionGranted();
+      return granted ? "granted" : "default";
+    } catch {
+      return "default";
+    }
+  }
+  if (typeof window === "undefined" || !("Notification" in window)) {
+    return "unsupported";
+  }
+  return Notification.permission as NotificationPermissionState;
+}
+
 /**
- * Solicita permiso de notificaciones web/sistema cuando el usuario guarda un favorito.
+ * Solicita permiso real de notificaciones (Android Tauri v2 POST_NOTIFICATIONS o Web Notification API).
  */
 export async function requestStockAlertPermission(): Promise<boolean> {
+  if (isTauriEnvironment()) {
+    try {
+      const notifPlugin = await import("@tauri-apps/plugin-notification");
+      let granted = await notifPlugin.isPermissionGranted();
+      if (!granted) {
+        const perm = await notifPlugin.requestPermission();
+        granted = perm === "granted";
+      }
+      return granted;
+    } catch {
+      // Continuar al respaldo Web Notification
+    }
+  }
+
   if (typeof window === "undefined" || !("Notification" in window)) {
     return false;
   }
