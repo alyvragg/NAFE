@@ -34,6 +34,11 @@ import {
   GeoCoordinates,
   triggerNativeStockNotification,
 } from "@/lib/nativeBridge";
+import {
+  FavoriteStockAlert,
+  requestStockAlertPermission,
+  subscribeToFavoriteStockAlerts,
+} from "@/lib/favoriteStockService";
 import { usePlatform } from "@/lib/platform";
 import { HomeHeader, ActiveWorkspaceMode } from "./HomeHeader";
 import { BuyerRadarView } from "./BuyerRadarView";
@@ -97,8 +102,15 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
 
   // Notifications & Avatar upload (`lily`) state
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [liveStockToast, setLiveStockToast] =
+    useState<FavoriteStockAlert | null>(null);
+  const savedIdsRef = useRef<string[]>([]);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    savedIdsRef.current = savedIds;
+  }, [savedIds]);
 
   const syncProfileFromStorage = useCallback(() => {
     const loaded = loadLocalProfile();
@@ -230,6 +242,37 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
     };
   }, [profile.userId]);
 
+  // Servicio en tiempo real: avisa cuando un negocio favorito marca que tiene stock
+  useEffect(() => {
+    let toastTimer: number | null = null;
+    const unsubscribe = subscribeToFavoriteStockAlerts({
+      getSavedIds: () => savedIdsRef.current,
+      onAlert: (alert) => {
+        setNotifications((prev) => [
+          {
+            id: alert.id,
+            businessId: alert.businessId,
+            title: alert.title,
+            body: alert.body,
+            isRead: false,
+            createdAt: alert.createdAt,
+          },
+          ...prev,
+        ]);
+        setLiveStockToast(alert);
+        if (toastTimer) window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => {
+          setLiveStockToast(null);
+        }, 6500);
+      },
+    });
+
+    return () => {
+      if (toastTimer) window.clearTimeout(toastTimer);
+      unsubscribe();
+    };
+  }, []);
+
   const handleMarkNotificationsRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     await markNotificationsRead();
@@ -279,6 +322,7 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
     setSavedIds(nextIds);
 
     if (!isCurrentlySaved) {
+      void requestStockAlertPermission();
       const target = producers.find((p) => p.id === id);
       if (target) {
         const previewNotif: AppNotification = {
@@ -698,12 +742,56 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
     );
   };
 
+  const renderLiveStockToast = () => (
+    <AnimatePresence>
+      {liveStockToast && (
+        <motion.div
+          key={liveStockToast.id}
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -12 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-50 mx-auto max-w-[420px] rounded-xl bg-[#1F3A26] p-3.5 text-[#F4F7F4] shadow-[0_12px_32px_rgba(19,21,12,0.28)]"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                const match = producers.find(
+                  (p) => p.id === liveStockToast.businessId
+                );
+                if (match) setSelectedProducer(match);
+                setLiveStockToast(null);
+              }}
+              className="min-w-0 flex-1 text-left"
+            >
+              <p className="text-xs font-semibold text-[#F4F7F4]">
+                {liveStockToast.title}
+              </p>
+              <p className="mt-0.5 text-xs text-[#F4F7F4]/85">
+                {liveStockToast.body}
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLiveStockToast(null)}
+              className="shrink-0 text-xs font-medium text-[#F4F7F4]/75 hover:text-white"
+            >
+              Cerrar
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   // ============================================================================
   // 1. DESKTOP PC VIEW
   // ============================================================================
   if (platform === "pc") {
     return (
       <div className="min-h-dvh w-full bg-[#F7F7F4] text-[#13150C]">
+        {renderLiveStockToast()}
         <div className="mx-auto flex min-h-dvh max-w-[1240px] flex-col justify-between px-6 py-5">
           <div>
             <HomeHeader
@@ -819,6 +907,7 @@ export function NafeHomeApp({ forcedMobile = false }: NafeHomeAppProps) {
           : "flex min-h-dvh w-full items-center justify-center bg-[#EFEFEA] sm:p-4"
       }
     >
+      {renderLiveStockToast()}
       <div
         className={
           forcedMobile

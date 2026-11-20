@@ -8,6 +8,7 @@ import TextType from "@/components/ui/TextType";
 import { OtpInput } from "./OtpInput";
 import {
   UserRole,
+  SubscriptionTier,
   validateName,
   validateContact,
   validatePassword,
@@ -18,14 +19,16 @@ import {
   requestOtpCodeInSupabase,
   verifyOtpCodeInSupabase,
   signUpWithSupabase,
+  upgradeSubscriptionTier,
 } from "@/lib/supabase";
+import { PLAN_LIST } from "@/lib/plans";
 
 interface OnboardingFlowProps {
   onBack: () => void;
   onSwitchToLogin: () => void;
 }
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 const ROLE_OPTIONS: Array<{
   id: UserRole;
@@ -58,6 +61,8 @@ export function OnboardingFlow({
   const [otpErrorKey, setOtpErrorKey] = useState(0);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [selectingPlanTier, setSelectingPlanTier] =
+    useState<SubscriptionTier | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [stepInputReady, setStepInputReady] = useState(false);
   const [isCompletedTransition, setIsCompletedTransition] = useState(false);
@@ -235,12 +240,22 @@ export function OnboardingFlow({
       return;
     }
 
-    setIsCompletedTransition(true);
-    setInfoMessage("Cuenta creada. Abriendo radar…");
+    setIsBusy(false);
+    setInfoMessage("Cuenta creada. Elige tu plan o continúa gratis.");
+    setStep(5);
+  };
 
+  const handleSelectPostSignupPlan = async (tier: SubscriptionTier) => {
+    if (selectingPlanTier) return;
+    setSelectingPlanTier(tier);
+    if (tier !== "free") {
+      await upgradeSubscriptionTier(tier);
+    }
+    setIsCompletedTransition(true);
+    setInfoMessage("Abriendo radar…");
     window.setTimeout(() => {
       router.push("/radar");
-    }, 550);
+    }, 450);
   };
 
   const firstName = name.trim().split(/\s+/)[0] || "vecino";
@@ -678,10 +693,92 @@ export function OnboardingFlow({
                         : "cursor-not-allowed bg-[#2B4628]/40 text-white/75",
                     ].join(" ")}
                   >
-                    {isBusy ? "Creando cuenta…" : "Entrar al radar"}
+                    {isBusy ? "Creando cuenta…" : "Continuar"}
                   </button>
                 </div>
               </motion.div>
+            </motion.div>
+          )}
+
+          {/* STEP 5: POST-REGISTRATION PLAN SELECTION */}
+          {step === 5 && (
+            <motion.div
+              key="step-5"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-4"
+            >
+              <div className="space-y-1">
+                <h1 className="font-serif text-2xl font-medium leading-tight tracking-[-0.015em] text-[#F7F7F4]/95 sm:text-3xl">
+                  Tu cuenta está lista, {firstName}. ¿Quieres activar un plan?
+                </h1>
+                <p className="text-xs text-[#F7F7F4]/70">
+                  Puedes empezar gratis con Plan Semilla o elegir un plan para
+                  desbloquear más puestos, fotos y estadísticas.
+                </p>
+              </div>
+
+              <div className="space-y-2.5">
+                {PLAN_LIST.map((plan) => {
+                  const isBusyThis = selectingPlanTier === plan.id;
+                  return (
+                    <div
+                      key={plan.id}
+                      className="space-y-2.5 rounded-xl bg-[#F7F7F4] p-3.5 text-[#13150C]"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h2 className="text-sm font-semibold text-[#13150C]">
+                            {plan.name}
+                          </h2>
+                          <p className="text-[11px] text-[#6E6D5F]">
+                            {plan.shortSubtitle}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <span className="text-base font-semibold text-[#13150C]">
+                            {plan.priceLabel}
+                          </span>
+                          <span className="block text-[10px] text-[#6E6D5F]">
+                            {plan.periodLabel}
+                          </span>
+                        </div>
+                      </div>
+
+                      <ul className="space-y-1 rounded-lg bg-[#EFEFEA] p-2.5 text-[11px] text-[#13150C]">
+                        {plan.perks.map((perk) => (
+                          <li key={perk.label} className="leading-snug">
+                            <span className="font-semibold text-[#2B4628]">
+                              {perk.label}:
+                            </span>{" "}
+                            {perk.value}
+                          </li>
+                        ))}
+                      </ul>
+
+                      <button
+                        type="button"
+                        disabled={selectingPlanTier !== null}
+                        onClick={() => handleSelectPostSignupPlan(plan.id)}
+                        className={[
+                          "flex h-10 w-full items-center justify-center rounded-lg px-4 text-xs font-semibold transition-colors disabled:opacity-60",
+                          plan.id === "free"
+                            ? "bg-[#EFEFEA] text-[#13150C] hover:bg-[#e5e5de]"
+                            : "bg-[#2B4628] text-[#F7F7F4] hover:bg-[#223820]",
+                        ].join(" ")}
+                      >
+                        {isBusyThis
+                          ? "Activando…"
+                          : plan.id === "free"
+                            ? "Continuar con Plan Semilla ($0)"
+                            : `Elegir ${plan.name}`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

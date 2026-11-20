@@ -32,6 +32,7 @@ import {
   triggerNativeStockNotification,
 } from "@/lib/nativeBridge";
 import { getShortCategoryLabel } from "./BuyerRadarView";
+import { getPlanConfig } from "@/lib/plans";
 
 interface ProducerPanelViewProps {
   profile: LocalProfile;
@@ -142,6 +143,8 @@ export function ProducerPanelView({
   const [isLoggingSale, setIsLoggingSale] = useState(false);
 
   const currentTier = profile.subscriptionTier || "free";
+  const planConfig = getPlanConfig(currentTier);
+  const maxPhotosAllowed = planConfig.maxPhotos;
   const smsTemplate = `NAFE ACTIVO | ${
     whatYouHave.trim() || "Queso fresco"
   } | ${meetingPoint.trim() || defaultMeeting} | ${cutoffTime}`;
@@ -215,15 +218,18 @@ export function ProducerPanelView({
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
-    if (uploadedPhotos.length >= 3) return;
+    if (uploadedPhotos.length >= maxPhotosAllowed) return;
 
     setIsUploadingPhoto(true);
-    const filesArray = Array.from(fileList).slice(0, 3 - uploadedPhotos.length);
+    const filesArray = Array.from(fileList).slice(
+      0,
+      maxPhotosAllowed - uploadedPhotos.length
+    );
     const urls = await uploadProductPhotos(
       filesArray,
       profile.userId || "local-user"
     );
-    setUploadedPhotos((prev) => [...prev, ...urls].slice(0, 3));
+    setUploadedPhotos((prev) => [...prev, ...urls].slice(0, maxPhotosAllowed));
     setIsUploadingPhoto(false);
   };
 
@@ -259,6 +265,7 @@ export function ProducerPanelView({
       photos: uploadedPhotos,
       userCoords,
       isOfflineSimulated: isOffline,
+      stockDurationHours: planConfig.stockDurationHours,
     });
 
     setIsPublishing(false);
@@ -285,7 +292,7 @@ export function ProducerPanelView({
   };
 
   const handleRenew24h = async (post: ProducerPost) => {
-    await renewBusinessStock24h(post.id);
+    await renewBusinessStock24h(post.id, planConfig.stockDurationHours);
     onPostUpdated(post.id, {
       freshnessStatus: "confirmed",
       freshnessLabel: "Disponible hoy",
@@ -295,7 +302,7 @@ export function ProducerPanelView({
     const notifBody = `${post.producerName} confirmó stock de "${post.productTitle}" en ${post.meetingPoint}`;
     onStockNotificationCreated(notifTitle, notifBody);
     void triggerNativeStockNotification(notifTitle, notifBody);
-    setPublishSuccessNote("Stock confirmado por 24h");
+    setPublishSuccessNote(planConfig.stockRenewedMessage);
   };
 
   const handleTogglePause = async (post: ProducerPost) => {
@@ -385,6 +392,76 @@ export function ProducerPanelView({
     await reloadSalesHistory();
   };
 
+  const handleExportSalesCsv = (monthlyByStore = false) => {
+    const rows = salesSummary.sales;
+    let csvContent = "";
+
+    if (monthlyByStore) {
+      const grouped = new Map<
+        string,
+        { count: number; verified: number; totalMxn: number }
+      >();
+      for (const s of rows) {
+        const key = s.businessName || "Mi puesto";
+        const cur = grouped.get(key) || { count: 0, verified: 0, totalMxn: 0 };
+        cur.count += 1;
+        if (s.buyerConfirmed) cur.verified += 1;
+        if (typeof s.amountMxn === "number") cur.totalMxn += s.amountMxn;
+        grouped.set(key, cur);
+      }
+      csvContent =
+        "Puesto,Entregas totales,Entregas confirmadas,Total MXN\n" +
+        Array.from(grouped.entries())
+          .map(
+            ([name, stat]) =>
+              `"${name.replace(/"/g, '""')}",${stat.count},${stat.verified},${stat.totalMxn.toFixed(2)}`
+          )
+          .join("\n");
+    } else {
+      csvContent =
+        "Fecha,Negocio,Producto,Cantidad,Monto MXN,Confirmada\n" +
+        rows
+          .map(
+            (s) =>
+              `"${new Date(s.createdAt).toLocaleString("es-MX")}","${(
+                s.businessName || ""
+              ).replace(/"/g, '""')}","${s.itemSummary.replace(/"/g, '""')}",${
+                s.quantity
+              },${s.amountMxn ?? ""},${s.buyerConfirmed ? "Si" : "No"}`
+          )
+          .join("\n");
+    }
+
+    const blob = new Blob([`\uFEFF${csvContent}`], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = monthlyByStore
+      ? "nafe-reporte-mensual-multipuesto.csv"
+      : "nafe-ventas.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setPublishSuccessNote(
+      monthlyByStore ? "Reporte mensual descargado" : "CSV exportado"
+    );
+  };
+
+  const topOrderedProducts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const sale of salesSummary.sales) {
+      const key = sale.itemSummary.trim();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) || 0) + (sale.quantity || 1));
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+  }, [salesSummary.sales]);
+
   return (
     <div className="space-y-3.5 pb-8">
       {/* 1. Perfil del Puesto (Cero cajas de íconos) */}
@@ -392,9 +469,9 @@ export function ProducerPanelView({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
-              {profile.isVerified ? (
+              {profile.isVerified || currentTier !== "free" ? (
                 <span className="rounded-md bg-[#1F3A26] px-2 py-0.5 text-xs font-medium text-[#F4F7F4]">
-                  Verificado
+                  {planConfig.trustBadgeLabel}
                 </span>
               ) : (
                 <button
@@ -724,6 +801,81 @@ export function ProducerPanelView({
             </AnimatePresence>
           </div>
 
+          {/* Estadísticas avanzadas y Exportación según Plan (Cosecha / Cooperativa) */}
+          <section className="space-y-2.5 rounded-xl bg-[#FFFFFF] p-4 shadow-[0_2px_10px_rgba(19,21,12,0.04)]">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-[#13150C]">
+                Estadísticas y reportes ({planConfig.name})
+              </h3>
+              {!planConfig.hasCsvExport && (
+                <button
+                  type="button"
+                  onClick={onOpenSubscriptionModal}
+                  className="rounded-md bg-[#EFEFEA] px-2.5 py-1 text-xs font-semibold text-[#2B4628] hover:bg-[#2B4628] hover:text-[#F7F7F4]"
+                >
+                  Mejorar plan
+                </button>
+              )}
+            </div>
+
+            {planConfig.hasAdvancedStats ? (
+              <div className="space-y-2.5">
+                <div className="rounded-lg bg-[#F7F7F4] p-3 text-xs">
+                  <p className="font-semibold text-[#13150C]">
+                    Productos más pedidos
+                  </p>
+                  {topOrderedProducts.length === 0 ? (
+                    <p className="mt-1 text-[#6E6D5F]">
+                      Registra entregas para ver tus productos más solicitados.
+                    </p>
+                  ) : (
+                    <ul className="mt-1.5 space-y-1 text-[#13150C]">
+                      {topOrderedProducts.map(([prod, qty]) => (
+                        <li
+                          key={prod}
+                          className="flex items-center justify-between gap-2"
+                        >
+                          <span className="truncate">{prod}</span>
+                          <span className="shrink-0 font-semibold text-[#2B4628]">
+                            {qty} uds
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={salesSummary.sales.length === 0}
+                    onClick={() => handleExportSalesCsv(false)}
+                    className="h-9 flex-1 rounded-lg bg-[#EFEFEA] px-3 text-xs font-semibold text-[#13150C] transition-colors hover:bg-[#2B4628] hover:text-[#F7F7F4] disabled:opacity-50"
+                  >
+                    Exportar Excel / CSV
+                  </button>
+
+                  {planConfig.hasMonthlyReport && (
+                    <button
+                      type="button"
+                      disabled={salesSummary.sales.length === 0}
+                      onClick={() => handleExportSalesCsv(true)}
+                      className="h-9 flex-1 rounded-lg bg-[#2B4628] px-3 text-xs font-semibold text-[#F7F7F4] transition-colors hover:bg-[#223820] disabled:opacity-50"
+                    >
+                      Reporte mensual multi-puesto
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-[#6E6D5F]">
+                El Plan Semilla incluye registro básico de entregas. Activa Plan
+                Cosecha o Cooperativa para ver productos más pedidos, métricas
+                multi-puesto y exportar a Excel/CSV.
+              </p>
+            )}
+          </section>
+
           {/* Lista del historial de ventas del vendedor */}
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-[#13150C]">
@@ -888,12 +1040,12 @@ export function ProducerPanelView({
 
                   {/* Subida de fotos reales a Supabase Storage */}
                   <div className="flex flex-wrap items-center gap-2">
-                    {uploadedPhotos.length < 3 && (
+                    {uploadedPhotos.length < maxPhotosAllowed && (
                       <label className="inline-flex h-9 cursor-pointer items-center rounded-lg bg-[#EFEFEA] px-3 text-xs font-semibold text-[#2B4628] transition-colors hover:bg-[#1F3A26] hover:text-[#F4F7F4]">
                         <span>
                           {isUploadingPhoto
                             ? "Subiendo…"
-                            : `Subir foto (${uploadedPhotos.length}/3)`}
+                            : `Subir foto (${uploadedPhotos.length}/${maxPhotosAllowed})`}
                         </span>
                         <input
                           type="file"
@@ -1025,7 +1177,7 @@ export function ProducerPanelView({
                           onClick={() => handleRenew24h(post)}
                           className="h-8 rounded-lg bg-[#1F3A26] px-3 text-xs font-medium text-[#F4F7F4]"
                         >
-                          Confirmar stock
+                          {planConfig.stockRenewLabel}
                         </button>
 
                         <button

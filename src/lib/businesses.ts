@@ -300,6 +300,7 @@ export async function createNewBusinessInSupabase(params: {
   photos?: string[];
   userCoords?: GeoCoordinates;
   isOfflineSimulated?: boolean;
+  stockDurationHours?: number;
 }): Promise<{ ok: boolean; post?: ProducerPost; subscriptionRequired?: boolean; error?: string }> {
   const baseCoords = params.userCoords || DEFAULT_CENTER_COORDS;
   const fuzzed = fuzzCoordinates(baseCoords.lat, baseCoords.lng);
@@ -311,7 +312,10 @@ export async function createNewBusinessInSupabase(params: {
   );
   const catSlug = categoryLabelToSlug(params.category);
   const photoList = (params.photos ?? []).filter(Boolean);
-  const expiresIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const durationHours = Math.max(24, params.stockDurationHours ?? 24);
+  const expiresIso = new Date(
+    Date.now() + durationHours * 60 * 60 * 1000
+  ).toISOString();
 
   const cleanDescription =
     params.description?.trim() ||
@@ -400,9 +404,14 @@ export async function createNewBusinessInSupabase(params: {
   return { ok: true, post: draftPost };
 }
 
-export async function renewBusinessStock24h(businessId: string): Promise<void> {
+export async function renewBusinessStock24h(
+  businessId: string,
+  durationHours = 24
+): Promise<void> {
   const nowIso = new Date().toISOString();
-  const nextExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const nextExpiry = new Date(
+    Date.now() + Math.max(24, durationHours) * 60 * 60 * 1000
+  ).toISOString();
   if (
     typeof navigator !== "undefined" &&
     navigator.onLine &&
