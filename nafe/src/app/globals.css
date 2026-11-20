@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root {
+  --nafe-sand: #DEDED8;
+  --nafe-forest: #3D562F;
+  --nafe-mint: #DBF7EC;
+  --nafe-blush: #F7DBDB;
+  --nafe-earth: #949172;
+  --nafe-ink: #13150C;
+}
+
+@theme inline {
+  --color-nafe-sand: #DEDED8;
+  --color-nafe-forest: #3D562F;
+  --color-nafe-mint: #DBF7EC;
+  --color-nafe-blush: #F7DBDB;
+  --color-nafe-earth: #949172;
+  --color-nafe-ink: #13150C;
+
+  --color-background: #DEDED8;
+  --color-foreground: #13150C;
+
+  --font-sans: var(--font-plus-jakarta-sans), system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-newsreader), Georgia, "Times New Roman", serif;
+}
+
+html,
+body {
+  background-color: #DEDED8;
+  color: #13150C;
+  font-family: var(--font-plus-jakarta-sans), system-ui, -apple-system, sans-serif;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Enforce NAFE editorial Newsreader display style with 80% ink opacity */
+.nafe-display {
+  font-family: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  color: rgb(19 21 12 / 0.8);
+}
+
+/* Smooth momentum scrolling inside mobile sheet containers */
+.nafe-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.nafe-scroll::-webkit-scrollbar {
+  display: none;
+}
