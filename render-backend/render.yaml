@@ -4,7 +4,6 @@ services:
     env: node
     plan: free
     rootDir: render-backend
-    buildCommand: npm install && npm run build
     startCommand: npm run start
     healthCheckPath: /api/health
     envVars:
