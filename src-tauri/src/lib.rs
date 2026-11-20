@@ -35,7 +35,7 @@ pub fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 
 /// 1. Filtra y ordena negocios por distancia real (Haversine) en milisegundos.
 #[tauri::command]
-pub fn filter_and_sort_by_distance(
+fn filter_and_sort_by_distance(
     user_lat: f64,
     user_lng: f64,
     max_radius_km: f64,
@@ -69,7 +69,7 @@ pub fn filter_and_sort_by_distance(
 
 /// 2. Guarda el caché offline en app_data_dir()/nafe_offline_cache.json
 #[tauri::command]
-pub fn save_offline_cache(app: tauri::AppHandle, payload_json: String) -> Result<(), String> {
+fn save_offline_cache(app: tauri::AppHandle, payload_json: String) -> Result<(), String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -85,7 +85,7 @@ pub fn save_offline_cache(app: tauri::AppHandle, payload_json: String) -> Result
 
 /// 3. Lee el caché offline guardado en app_data_dir()/nafe_offline_cache.json
 #[tauri::command]
-pub fn load_offline_cache(app: tauri::AppHandle) -> Result<String, String> {
+fn load_offline_cache(app: tauri::AppHandle) -> Result<String, String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -102,7 +102,7 @@ pub fn load_offline_cache(app: tauri::AppHandle) -> Result<String, String> {
 
 /// 4. Dispara notificación nativa en Android / Desktop cuando un favorito tiene stock.
 #[tauri::command]
-pub fn notify_favorite_stock(
+fn notify_favorite_stock(
     app: tauri::AppHandle,
     title: String,
     body: String,
