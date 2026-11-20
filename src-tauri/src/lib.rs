@@ -115,6 +115,48 @@ fn notify_favorite_stock(
         .map_err(|e| format!("Error al mostrar notificación nativa: {}", e))
 }
 
+/// 5. Envía el correo OTP directamente vía Resend API desde Rust (sin CORS ni dependencia de Render).
+#[tauri::command]
+async fn send_resend_otp_email(
+    to: String,
+    name: String,
+    code: String,
+) -> Result<bool, String> {
+    let api_key = option_env!("RESEND_API_KEY")
+        .unwrap_or("re_AAzo6FsC_F3HrNEnGf8oQPYwfnyeP5yqU");
+    let from_addr = option_env!("RESEND_FROM").unwrap_or("onboarding@resend.dev");
+    let display_name = if name.trim().is_empty() {
+        "vecino"
+    } else {
+        name.trim()
+    };
+
+    let payload = serde_json::json!({
+        "from": format!("NAFE <{}>", from_addr),
+        "to": [to.trim()],
+        "subject": format!("Tu código de verificación NAFE: {}", code),
+        "html": format!(
+            "<div style=\"font-family:sans-serif;padding:20px;color:#13150C;background:#F7F7F4;\"><h2 style=\"margin:0 0 12px;\">Hola, {}</h2><p style=\"margin:0 0 16px;\">Tu código de verificación para NAFE es:</p><p style=\"font-size:28px;font-weight:700;letter-spacing:6px;color:#2B4628;margin:0 0 16px;\">{}</p><p style=\"font-size:12px;color:#6E6D5F;\">Expira en 10 minutos.</p></div>",
+            display_name, code
+        )
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(6))
+        .build()
+        .map_err(|e| format!("Error cliente HTTP: {}", e))?;
+    let res = client
+        .post("https://api.resend.com/emails")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Error de red Resend: {}", e))?;
+
+    Ok(res.status().is_success())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -125,7 +167,8 @@ pub fn run() {
             filter_and_sort_by_distance,
             save_offline_cache,
             load_offline_cache,
-            notify_favorite_stock
+            notify_favorite_stock,
+            send_resend_otp_email
         ])
         .run(tauri::generate_context!())
         .expect("error al ejecutar la aplicación Tauri NAFE");

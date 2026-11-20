@@ -22,7 +22,7 @@ export async function uploadProductPhotos(
   userId: string,
   businessId?: string
 ): Promise<string[]> {
-  const sliced = files.slice(0, 3);
+  const sliced = files.slice(0, 10);
   if (sliced.length === 0) return [];
 
   const cleanUserId = userId?.trim() || "local-user";

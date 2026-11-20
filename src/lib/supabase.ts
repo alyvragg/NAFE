@@ -19,7 +19,8 @@ import {
 } from "@/lib/email";
 
 const DEFAULT_SUPABASE_URL = "https://widycevcjjruphtbkuqp.supabase.co";
-const DEFAULT_SUPABASE_KEY = "sb_publishable_Um8IIgU5HOWDsE-U7W8eog_XJSVavjo";
+const DEFAULT_SUPABASE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpZHljZXZjampydXBodGJrdXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMTk2MzYsImV4cCI6MjExMDY5NTYzNn0.Ka2OYtHsDs3_pSEf5vouqSvMDzxx0tX-60v8JKAo0Cc";
 
 const ENV_SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
 const SUPABASE_URL =
@@ -29,15 +30,29 @@ const SUPABASE_URL =
     : DEFAULT_SUPABASE_URL;
 
 const ENV_SUPABASE_KEY = (
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   ""
 ).trim();
-const SUPABASE_PUBLISHABLE_KEY = ENV_SUPABASE_KEY || DEFAULT_SUPABASE_KEY;
+const SUPABASE_PUBLISHABLE_KEY =
+  ENV_SUPABASE_KEY.startsWith("eyJ") ? ENV_SUPABASE_KEY : DEFAULT_SUPABASE_KEY;
 
 const globalForSupabase = globalThis as unknown as {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   __nafeSupabaseClient?: SupabaseClient<any, "public", any>;
+};
+
+const supabaseFetchWithTimeout: typeof fetch = async (input, init) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: init?.signal ?? controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 export const supabase =
@@ -46,11 +61,20 @@ export const supabase =
     SUPABASE_URL,
     SUPABASE_PUBLISHABLE_KEY,
     {
+      global: {
+        fetch: supabaseFetchWithTimeout,
+      },
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: false,
         storageKey: "nafe_supabase_auth_v1",
+        // Evita deadlocks de navigator.locks en Android WebView (http://tauri.localhost)
+        lock: async <R,>(
+          _name: string,
+          _acquireTimeout: number,
+          fn: () => Promise<R>
+        ): Promise<R> => await fn(),
       },
     }
   ));
@@ -125,16 +149,39 @@ export async function requestOtpCodeInSupabase(
     }
   }
 
-  // 2. Respaldo directo en Supabase Postgres (`public.request_otp_code`) — funciona 100% en APK Android sin localhost ni Render
+  // 2. Generar OTP directo en Supabase Postgres (`public.request_otp_code`) y enviarlo por Resend nativo en Tauri si es correo
   try {
     const { data, error } = await supabase.rpc("request_otp_code", {
       p_contact: clean,
     });
     if (!error && data) {
+      const generatedCode = String(data);
+
+      // Si estamos en Android Tauri y es correo, enviarlo directo vía Resend en Rust (sin CORS)
+      if (
+        isValidEmail(clean) &&
+        typeof window !== "undefined" &&
+        "__TAURI_INTERNALS__" in window
+      ) {
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          const sent = await invoke<boolean>("send_resend_otp_email", {
+            to: clean,
+            name: name || "vecino",
+            code: generatedCode,
+          });
+          if (sent) {
+            return { ok: true, sentViaEmail: true };
+          }
+        } catch {
+          // Continuar mostrando código de respaldo
+        }
+      }
+
       return {
         ok: true,
         sentViaEmail: false,
-        fallbackCode: String(data),
+        fallbackCode: generatedCode,
       };
     }
     return {
